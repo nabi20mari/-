@@ -1,0 +1,149 @@
+{
+ "id": "astronaut",
+ "title": "우주비행사",
+ "source": "tools/src/astronaut.png",
+ "credit": "NASA (Eileen Collins), scikit-image 예시 사진",
+ "license": "Public domain",
+ "url": "https://commons.wikimedia.org/wiki/File:Eileen_Collins.jpg",
+ "diffs": [
+  {
+   "op": "recolor",
+   "ellipse": [
+    400,
+    752,
+    86,
+    88
+   ],
+   "hue": 110,
+   "level": 1,
+   "desc": "동그란 휘장 색이 바뀌었어요"
+  },
+  {
+   "op": "remove",
+   "poly": [
+    [
+     655,
+     650
+    ],
+    [
+     770,
+     672
+    ],
+    [
+     762,
+     735
+    ],
+    [
+     650,
+     712
+    ]
+   ],
+   "from": [
+    60,
+    -105
+   ],
+   "level": 1,
+   "desc": "가슴의 이름표가 사라졌어요",
+   "grow": 9,
+   "blur": 8
+  },
+  {
+   "op": "recolor",
+   "poly": [
+    [
+     0,
+     140
+    ],
+    [
+     150,
+     120
+    ],
+    [
+     205,
+     330
+    ],
+    [
+     150,
+     420
+    ],
+    [
+     85,
+     560
+    ],
+    [
+     50,
+     900
+    ],
+    [
+     0,
+     900
+    ]
+   ],
+   "hue": 130,
+   "match": {
+    "hue": 355,
+    "range": 12
+   },
+   "level": 1,
+   "desc": "깃발 줄무늬 색이 바뀌었어요"
+  },
+  {
+   "op": "scale",
+   "poly": [
+    [
+     55,
+     630
+    ],
+    [
+     125,
+     622
+    ],
+    [
+     128,
+     742
+    ],
+    [
+     58,
+     748
+    ]
+   ],
+   "k": 1.35,
+   "level": 2,
+   "desc": "팔의 분홍 패치가 커졌어요"
+  },
+  {
+   "op": "remove",
+   "poly": [
+    [
+     868,
+     338
+    ],
+    [
+     892,
+     338
+    ],
+    [
+     892,
+     356
+    ],
+    [
+     868,
+     356
+    ]
+   ],
+   "level": 2,
+   "desc": "우주왕복선의 깃발 그림이 사라졌어요"
+  },
+  {
+   "op": "remove",
+   "ellipse": [
+    912,
+    92,
+    16,
+    12
+   ],
+   "level": 3,
+   "desc": "우주왕복선의 작은 창문이 사라졌어요"
+  }
+ ]
+}

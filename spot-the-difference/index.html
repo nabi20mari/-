@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>틀린그림 찾기</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 1. 시작 화면: 모드, 사람, 난이도 -->
+  <section id="home" class="screen active">
+    <div class="home-wrap">
+      <header class="home-head">
+        <h1>틀린그림 찾기</h1>
+        <p>진짜 사진 속 숨은 차이를 찾아라!</p>
+        <button id="muteBtn" class="icon-btn" aria-label="소리 켜기/끄기">🔊</button>
+      </header>
+
+      <div class="card">
+        <h2>게임 방법</h2>
+        <div class="seg" id="modeSeg">
+          <button data-v="turn" class="on"><b>차례대로 대결</b><span>돌아가며 하나씩 찾고 점수 겨루기</span></button>
+          <button data-v="coop"><b>다 같이 협동</b><span>제한 시간 안에 함께 모두 찾기</span></button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>함께 하는 사람</h2>
+        <div class="seg small" id="countSeg">
+          <button data-v="2" class="on">2명</button>
+          <button data-v="3">3명</button>
+        </div>
+        <div id="players"></div>
+        <p class="note" id="helpNote">⭐ 도움을 켜면 시간이 15초 더 길고 힌트를 2번 더 쓸 수 있어요.</p>
+      </div>
+
+      <div class="card">
+        <h2>난이도</h2>
+        <div class="seg" id="levelSeg">
+          <button data-v="easy"><b>쉬움</b><span>틀린 곳 5개</span></button>
+          <button data-v="normal" class="on"><b>보통</b><span>틀린 곳 7개</span></button>
+          <button data-v="hard"><b>어려움</b><span>틀린 곳 9개 · 아주 작은 차이</span></button>
+        </div>
+      </div>
+
+      <button id="toPhotos" class="big-btn">사진 고르기 ▶</button>
+    </div>
+  </section>
+
+  <!-- 2. 사진 고르기 -->
+  <section id="photos" class="screen">
+    <div class="top-bar">
+      <button class="icon-btn back" data-go="home" aria-label="뒤로">◀</button>
+      <h2>사진을 골라요</h2>
+      <span></span>
+    </div>
+    <div class="photo-grid" id="photoGrid"></div>
+    <div class="own-photo">
+      <h3>내 사진으로 만들기 <small>(자동 · 실험 기능)</small></h3>
+      <p>거실, 장난감 선반, 냉장고 속처럼 물건이 많은 사진일수록 재미있어요.</p>
+      <div class="own-btns">
+        <label class="big-btn alt">📷 사진 찍기<input type="file" accept="image/*" capture="environment" id="camInput" hidden></label>
+        <label class="big-btn alt">🖼️ 앨범에서 고르기<input type="file" accept="image/*" id="fileInput" hidden></label>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. 게임 -->
+  <section id="game" class="screen">
+    <div class="hud">
+      <button class="icon-btn" id="quitBtn" aria-label="그만하기">✕</button>
+      <div class="hud-mid">
+        <div class="turn" id="turnChip"></div>
+        <div class="timer"><div id="timerFill"></div></div>
+      </div>
+      <div class="progress" id="progress">0 / 0</div>
+      <button class="hint-btn" id="hintBtn">💡 힌트 <b id="hintCount">0</b></button>
+    </div>
+    <div class="scores" id="scores"></div>
+    <div class="boards" id="boards">
+      <div class="board" id="boardL"><canvas></canvas><svg class="marks"></svg></div>
+      <div class="board" id="boardR"><canvas></canvas><svg class="marks"></svg></div>
+    </div>
+    <div class="banner" id="banner"></div>
+    <div class="loading" id="loading"><div class="spinner"></div><p>틀린 곳을 만들고 있어요…</p></div>
+  </section>
+
+  <!-- 4. 결과 -->
+  <section id="result" class="screen">
+    <div class="result-wrap">
+      <div class="trophy" id="resTrophy">🏆</div>
+      <h2 id="resTitle"></h2>
+      <p id="resSub"></p>
+      <div id="resTable"></div>
+      <div id="resAnswers" class="answers"></div>
+      <div class="res-btns">
+        <button class="big-btn" id="nextBtn">다음 사진 ▶</button>
+        <button class="big-btn alt" id="homeBtn">처음으로</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="modal" id="confirm">
+    <div class="modal-box">
+      <p>게임을 그만할까요?</p>
+      <div class="res-btns">
+        <button class="big-btn alt" id="confirmNo">계속하기</button>
+        <button class="big-btn" id="confirmYes">그만하기</button>
+      </div>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+  <script src="js/puzzles.js"></script>
+  <script src="js/photodiff.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
