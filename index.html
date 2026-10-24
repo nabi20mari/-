@@ -455,9 +455,9 @@ const PHOTOS = [
 ];
 const MIX = [["recolor", .4], ["remove", .26], ["add", .14], ["flip", .1], ["shrink", .1]];
 const LEVELS = {
-  easy:   { count: 5,  rMin: .03,  rMax: .09,  thr: 40, hue: [120, 220], mix: MIX, hints: 3 },
-  normal: { count: 7,  rMin: .022, rMax: .065, thr: 32, hue: [90, 180],  mix: MIX, hints: 3 },
-  hard:   { count: 10, rMin: .015, rMax: .045, thr: 26, hue: [60, 130],  mix: [["recolor", .36], ["remove", .3], ["add", .16], ["flip", .09], ["shrink", .09]], hints: 2 },
+  easy:   { count: 5,  rMin: .03,  rMax: .09,  thr: 40, dE: [38, 140], mix: MIX, hints: 3 },
+  normal: { count: 7,  rMin: .022, rMax: .065, thr: 32, dE: [26, 90],  mix: MIX, hints: 3 },
+  hard:   { count: 10, rMin: .015, rMax: .045, thr: 26, dE: [18, 60],  mix: [["recolor", .36], ["remove", .3], ["add", .16], ["flip", .09], ["shrink", .09]], hints: 2 },
 };
 
 const store = {
@@ -571,6 +571,12 @@ function buildPuzzle(img, levelKey, seed) {
     grad[i] = Math.abs(LL[i + 1] - LL[i - 1]) + Math.abs(LL[i + W] - LL[i - W]) + .5 * (Math.abs(LA[i + 1] - LA[i - 1]) + Math.abs(LB[i + W] - LB[i - W]));
   }
 
+  // the photo's own colours: sampled from calm spots (inside objects, not on edges)
+  const palette = [];
+  for (let t = 0; t < 4000 && palette.length < 500; t++) {
+    const x = 2 + ((R() * (W - 4)) | 0), y = 2 + ((R() * (H - 4)) | 0), i = y * W + x;
+    if (grad[i] < 14) palette.push([LL[i], LA[i], LB[i]]);
+  }
   // seed candidates: cells with lots of edges (that is where objects are)
   const cs = 12, gw = Math.floor(W / cs), gh = Math.floor(H / cs);
   const cell = new Float32Array(gw * gh);
@@ -641,7 +647,7 @@ function buildPuzzle(img, levelKey, seed) {
     // how much does it stand out? compare a ring just inside the outline with a ring just outside,
     // and check that a real edge runs all the way around (a whole object, not a random chunk)
     const in2 = erode(m, w, h, 2), in4 = erode(in2, w, h, 2), out1 = dilate(m, w, h, 1), out4 = dilate(out1, w, h, 3), in1 = erode(m, w, h, 1);
-    const acc = [0, 0, 0, 0, 0, 0]; let ni = 0, no = 0, nb = 0, edged = 0;
+    const acc = [0, 0, 0, 0, 0, 0]; let ni = 0, no = 0, nb = 0, edged = 0, sharp = 0;
     let edgeThr = 0, en = 0;
     for (let i = 0; i < w * h; i += 7) { edgeThr += grad[(((i / w) | 0) + y0) * W + (i % w) + x0]; en++; }
     edgeThr = Math.max(12, edgeThr / en * 1.1);
@@ -649,12 +655,12 @@ function buildPuzzle(img, levelKey, seed) {
       const g = (((i / w) | 0) + y0) * W + (i % w) + x0;
       if (in2[i] && !in4[i]) { acc[0] += LL[g]; acc[1] += LA[g]; acc[2] += LB[g]; ni++; }
       else if (out4[i] && !out1[i]) { acc[3] += LL[g]; acc[4] += LA[g]; acc[5] += LB[g]; no++; }
-      if (m[i] && !in1[i]) { nb++; let gm = 0; for (const d of [0, 1, -1, w, -w, 2, -2]) { const j = g + (d === w ? W : d === -w ? -W : d); if (j >= 0 && j < N) gm = Math.max(gm, grad[j]); } if (gm > edgeThr) edged++; }
+      if (m[i] && !in1[i]) { nb++; let gm = 0; for (const d of [0, 1, -1, w, -w, 2, -2]) { const j = g + (d === w ? W : d === -w ? -W : d); if (j >= 0 && j < N) gm = Math.max(gm, grad[j]); } if (gm > edgeThr) edged++; sharp += gm; }
     }
     if (!ni || !no) return null;
     const contrast = Math.hypot(acc[0] / ni - acc[3] / no, acc[1] / ni - acc[4] / no, acc[2] / ni - acc[5] / no);
     const closed = nb ? edged / nb : 0;
-    return { x0, y0, w, h, m, A, contrast, closed, cx: x0 + sxm / A, cy: y0 + sym / A, bx0: x0 + bx0, by0: y0 + by0, bx1: x0 + bx1, by1: y0 + by1 };
+    return { x0, y0, w, h, m, A, contrast, closed, sharp: nb ? sharp / nb : 0, cx: x0 + sxm / A, cy: y0 + sym / A, bx0: x0 + bx0, by0: y0 + by0, bx1: x0 + bx1, by1: y0 + by1 };
   }
   function dilate(m, w, h, r) {
     let a = m;
@@ -704,7 +710,7 @@ function buildPuzzle(img, levelKey, seed) {
   /* ---- remove an object: Poisson-blend a matching background patch into its outline ---- */
   function removeSeg(sg) {
     const { x0, y0, w, h } = sg;
-    const hole = dilate(sg.m, w, h, 3);
+    const hole = dilate(sg.m, w, h, sg.sharp < 38 ? 6 : 3);   // soft edges spread further
     const band = [];
     const ring = dilate(hole, w, h, 4);
     for (let i = 0; i < w * h; i++) if (ring[i] && !hole[i]) band.push(i);
@@ -823,19 +829,40 @@ function buildPuzzle(img, levelKey, seed) {
     for (let i = 0; i < w * h; i += 2) if (sg.m[i]) { const g = (((i / w) | 0) + y0) * W + (i % w) + x0; const hv = rgb2hsv(oR[g], oG[g], oB[g]); hx += Math.cos(hv[0] * Math.PI / 180) * hv[1]; hy += Math.sin(hv[0] * Math.PI / 180) * hv[1]; }
     const mh = (Math.atan2(hy, hx) * 180 / Math.PI + 360) % 360;
     if (mh > 8 && mh < 45 && sat > .18 && sat < .6) return false;   // looks like skin: faces turning blue is silly, not tricky
-    const grey = sat < .14;
-    const shift = L.hue[0] + R() * (L.hue[1] - L.hue[0]);
-    const tintH = R() * 360;
+    // borrow a colour that already exists in this photo, so the new colour belongs there
+    const n2 = Math.max(1, n);
+    let mL = 0, mA = 0, mB = 0, cnt = 0;
+    for (let i = 0; i < w * h; i++) if (sg.m[i]) { const g = (((i / w) | 0) + y0) * W + (i % w) + x0; mL += LL[g]; mA += LA[g]; mB += LB[g]; cnt++; }
+    mL /= cnt; mA /= cnt; mB /= cnt;
+    if (mL < 26) return false;                       // black things (pupils, tyres) look fake in colour
+    const chroma = Math.hypot(mA, mB);
+    const opts = palette.filter(p => { const d = Math.hypot(p[1] - mA, p[2] - mB); return d >= L.dE[0] && d <= L.dE[1] && Math.abs(p[0] - mL) < 40 && Math.hypot(p[1], p[2]) >= Math.min(25, chroma * .6); });
+    if (!opts.length) return false;
+    const t = opts[(R() * opts.length) | 0];
+    const dL = (t[0] - mL) * .85, dA = t[1] - mA, dB = t[2] - mB;
     for (let i = 0; i < w * h; i++) {
       const al = a[i]; if (!al) continue;
       const g = (((i / w) | 0) + y0) * W + (i % w) + x0;
-      const hv = rgb2hsv(C[0][g], C[1][g], C[2][g]);
-      let nh, ns, nv = hv[2];
-      if (grey) { nh = tintH; ns = .45 + hv[1]; nv = Math.min(1, nv * 1.02); }
-      else { nh = (hv[0] + shift) % 360; ns = Math.min(1, hv[1] * 1.05); }
-      const rgb = hsv2rgb(nh, ns, nv);
+      const lab = rgb2lab(C[0][g], C[1][g], C[2][g]);
+      // keep the object's own shading; move only its colour (and a little of its brightness)
+      const rgb = lab2rgb(lab[0] + dL, lab[1] + dA, lab[2] + dB);
       for (let c = 0; c < 3; c++) C[c][g] = C[c][g] * (1 - al) + rgb[c] * al;
     }
+  }
+  function rgb2lab(r, g, b) {
+    const R_ = fl(r), G_ = fl(g), B_ = fl(b);
+    const X = (.4124 * R_ + .3576 * G_ + .1805 * B_) / .9505, Y = .2126 * R_ + .7152 * G_ + .0722 * B_, Z = (.0193 * R_ + .1192 * G_ + .9505 * B_) / 1.089;
+    const f = (t) => t > .008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+    const fx = f(X), fy = f(Y), fz = f(Z);
+    return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+  }
+  function lab2rgb(l, a, b) {
+    const fy = (l + 16) / 116, fx = fy + a / 500, fz = fy - b / 200;
+    const fi = (t) => t > .206893 ? t * t * t : (t - 16 / 116) / 7.787;
+    const X = fi(fx) * .9505, Y = fi(fy), Z = fi(fz) * 1.089;
+    const lr = 3.2406 * X - 1.5372 * Y - .4986 * Z, lg = -.9689 * X + 1.8758 * Y + .0415 * Z, lb = .0557 * X - .2040 * Y + 1.0570 * Z;
+    const gam = (v) => { v = Math.max(0, Math.min(1, v)); return 255 * (v <= .0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - .055); };
+    return [gam(lr), gam(lg), gam(lb)];
   }
   function rgb2hsv(r, g, b) {
     r /= 255; g /= 255; b /= 255;
@@ -877,8 +904,8 @@ function buildPuzzle(img, levelKey, seed) {
   const minPix0 = minPix;
   for (let attempt = 0; attempt < 1500 && diffs.length < L.count; attempt++) {
     const el = performance.now() - t0;
-    if (el > 9000) break;
-    const want = attempt > 1000 || el > 6500 ? 2 : attempt > 500 || el > 3500 ? 1 : 0;
+    if (el > 6500) break;
+    const want = attempt > 1000 || el > 4500 ? 2 : attempt > 500 || el > 2500 ? 1 : 0;
     if (want > phase) {
       phase = want;
       relax = phase === 1 ? .75 : .5;
@@ -895,6 +922,8 @@ function buildPuzzle(img, levelKey, seed) {
     // whole, clearly outlined objects only; moving or copying needs an even cleaner outline
     const need = type === "recolor" ? [14, .55] : type === "remove" ? [18, .68] : [24, .72];
     if (sg.contrast < need[0] * relax || sg.closed < need[1] * relax) continue;
+    // moving or copying a soft, out-of-focus shape leaves a smudge: only crisp objects
+    if ((type === "add" || type === "flip" || type === "shrink") && sg.sharp < 38) continue;
     const pad = Math.max(sg.bx1 - sg.bx0, sg.by1 - sg.by0) * .9 + 8;
     let region, undo;
     if (type === "recolor") {
@@ -939,7 +968,7 @@ function buildPuzzle(img, levelKey, seed) {
       region = pasteSeg(sg, tx, ty, "copy", 1);
     }
     const m = measure(region.bx0 - 4, region.by0 - 4, region.bx1 + 4, region.by1 + 4);
-    if (m.n < minPix || m.mean < thr || !free(m)) { undo(); continue; }
+    if (m.n < minPix || m.mean < thr * (type === "recolor" ? .7 : 1) || !free(m)) { undo(); continue; }
     const rx = Math.max((m.bx1 - m.bx0) / 2 + 3, rMin), ry = Math.max((m.by1 - m.by0) / 2 + 3, rMin);
     diffs.push({ x: (m.bx0 + m.bx1) / 2, y: (m.by0 + m.by1) / 2, rx, ry, bx0: m.bx0, by0: m.by0, bx1: m.bx1, by1: m.by1, type, found: false });
   }
