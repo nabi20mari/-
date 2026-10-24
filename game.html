@@ -1,0 +1,1007 @@
+<meta charset="utf-8">
+<title>틀린그림 탐험대</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap">
+<style>
+/* Layout: a sunny "explorer's field kit" — full-screen app with a home shelf of photo cards,
+   then a game board that fits two photos side by side (landscape) or stacked (portrait). */
+:root {
+  --sky: #DDF1FF;          /* page ground */
+  --sky-deep: #B9E0FB;
+  --ink: #1C2A4A;          /* text */
+  --ink-soft: #55648A;
+  --paper: #FFFFFF;        /* cards */
+  --sun: #FFC633;          /* found rings, stars */
+  --berry: #FF4F7B;        /* primary action */
+  --berry-dark: #D93460;
+  --leaf: #23B38A;         /* success */
+  --miss: #F0453A;         /* wrong tap */
+  --shadow: 0 6px 0 rgba(28, 42, 74, .14);
+  --font-display: "Jua", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-body: "Gowun Dodum", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  color-scheme: light;
+}
+[hidden] { display: none !important; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--sky); color: var(--ink);
+  font-family: var(--font-body); font-size: 16px;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+button:focus-visible, label:focus-visible, .card:focus-visible { outline: 4px solid var(--ink); outline-offset: 3px; }
+
+.screen { position: fixed; inset: 0; display: flex; flex-direction: column; }
+.screen[hidden] { display: none !important; }
+
+/* ---------- Home ---------- */
+#home { overflow-y: auto; -webkit-overflow-scrolling: touch;
+  background:
+    radial-gradient(circle at 12% 8%, #fff 0 60px, transparent 61px),
+    radial-gradient(circle at 18% 6%, #fff 0 44px, transparent 45px),
+    radial-gradient(circle at 88% 14%, #fff 0 52px, transparent 53px),
+    var(--sky);
+}
+.home-in {
+  width: 100%; max-width: 1180px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 40px;
+  display: flex; flex-direction: column; gap: 26px;
+}
+.brand { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.brand-mark { width: 84px; height: 84px; flex: none; }
+.brand h1 {
+  margin: 0; font-family: var(--font-display); font-weight: 400;
+  font-size: clamp(38px, 6vw, 64px); line-height: 1; letter-spacing: -.01em;
+  text-wrap: balance;
+}
+.brand h1 span { color: var(--berry); }
+.brand p { margin: 6px 0 0; color: var(--ink-soft); font-size: 18px; }
+
+.row-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.row-head h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 28px; }
+
+.levels { display: flex; gap: 8px; background: var(--paper); padding: 6px; border-radius: 999px; box-shadow: var(--shadow); }
+.levels button {
+  font-family: var(--font-display); font-size: 19px; padding: 10px 18px; border-radius: 999px;
+  color: var(--ink-soft); display: flex; align-items: center; gap: 6px;
+}
+.levels button small { font-family: var(--font-body); font-size: 13px; opacity: .8; }
+.levels button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
+.card {
+  position: relative; background: var(--paper); border-radius: 22px; padding: 10px 10px 12px;
+  box-shadow: var(--shadow); text-align: left; display: flex; flex-direction: column; gap: 10px;
+  transition: transform .15s ease;
+}
+.card:active { transform: translateY(3px) scale(.985); }
+.card .ph { aspect-ratio: 4 / 3; width: 100%; max-width: 100%; border-radius: 14px; overflow: hidden; background: var(--sky-deep); position: relative; }
+.card .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card .meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-inline: 4px; }
+.card .name { font-family: var(--font-display); font-size: 21px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .stars { font-size: 18px; letter-spacing: 1px; color: #D8DEEA; flex: none; }
+.card .stars b { color: var(--sun); font-weight: 400; }
+.card .del {
+  position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(28,42,74,.72); color: #fff; font-size: 20px; line-height: 36px; text-align: center;
+}
+.card.add {
+  border: 3px dashed #8FBCE6; background: rgba(255,255,255,.6); box-shadow: none;
+  align-items: center; justify-content: center; min-height: 220px; text-align: center; cursor: pointer;
+}
+.card.add .plus { width: 70px; height: 70px; border-radius: 50%; background: var(--berry); color: #fff;
+  font-size: 46px; line-height: 70px; font-family: var(--font-display); box-shadow: 0 5px 0 var(--berry-dark); }
+.card.add .name { white-space: normal; }
+.card.add p { margin: 0; color: var(--ink-soft); font-size: 15px; }
+#fileInput { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+.how { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.how div { background: rgba(255,255,255,.7); border-radius: 18px; padding: 14px 16px; display: flex; gap: 12px; align-items: center; font-size: 16px; line-height: 1.45; }
+.how i { font-style: normal; font-size: 30px; flex: none; }
+.foot { color: var(--ink-soft); font-size: 14px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.foot button { text-decoration: underline; color: var(--ink-soft); }
+
+/* ---------- Game ---------- */
+#game { background: #10213F; color: #fff; }
+.bar {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+  padding-block: 10px;
+}
+.bar .spacer { flex: 1; min-width: 0; }
+.pill {
+  height: 52px; min-width: 52px; border-radius: 26px; background: rgba(255,255,255,.12);
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px;
+  font-family: var(--font-display); font-size: 21px; color: #fff; flex: none;
+}
+button.pill:active { background: rgba(255,255,255,.24); }
+.pill svg { width: 26px; height: 26px; }
+.pill.hint { background: var(--sun); color: var(--ink); box-shadow: 0 4px 0 #C99512; }
+.pill.hint:disabled { background: rgba(255,255,255,.12); color: rgba(255,255,255,.4); box-shadow: none; }
+.pill.hint .cnt { background: var(--ink); color: var(--sun); border-radius: 12px; font-size: 16px; min-width: 24px; height: 24px; line-height: 24px; text-align: center; }
+.pill.hint:disabled .cnt { background: rgba(255,255,255,.15); color: rgba(255,255,255,.5); }
+.dots { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center; }
+.dot { width: 22px; height: 22px; border-radius: 50%; border: 3px solid rgba(255,255,255,.35); transition: all .3s; }
+.dot.on { background: var(--sun); border-color: var(--sun); transform: scale(1.15); box-shadow: 0 0 12px rgba(255,198,51,.8); }
+.timer { font-variant-numeric: tabular-nums; }
+.found-txt { font-family: var(--font-display); font-size: 21px; white-space: nowrap; }
+.found-txt b { color: var(--sun); font-weight: 400; }
+
+.board { flex: 1; min-height: 0; position: relative;
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+  padding-block: 4px 12px;
+}
+.panes { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; }
+.panes.stack { flex-direction: column; }
+.pane {
+  position: relative; overflow: hidden; border-radius: 14px; background: #000; flex: none;
+  touch-action: none; box-shadow: 0 0 0 3px rgba(255,255,255,.14);
+}
+.pane .tag {
+  position: absolute; left: 10px; top: 10px; z-index: 3; pointer-events: none;
+  font-family: var(--font-display); font-size: 15px; padding: 4px 10px; border-radius: 10px;
+  background: rgba(16,33,63,.72); color: #fff;
+}
+.stage { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform-origin: 0 0; will-change: transform; }
+.stage canvas { width: 100%; height: 100%; display: block; }
+.marks { position: absolute; inset: 0; pointer-events: none; }
+.ring {
+  position: absolute; border-radius: 50%;
+  border: calc(5px / var(--z, 1)) solid var(--sun);
+  box-shadow: 0 0 0 calc(2px / var(--z, 1)) rgba(16,33,63,.55), inset 0 0 0 calc(2px / var(--z, 1)) rgba(16,33,63,.35);
+  animation: pop .5s cubic-bezier(.2,1.6,.4,1) both;
+}
+.ring.reveal { border-color: #fff; border-style: dashed; }
+.ring .num {
+  position: absolute; right: -6%; top: -6%; width: calc(28px / var(--z,1)); height: calc(28px / var(--z,1));
+  border-radius: 50%; background: var(--sun); color: var(--ink);
+  font-family: var(--font-display); font-size: calc(17px / var(--z,1)); line-height: calc(28px / var(--z,1)); text-align: center;
+}
+.ring.reveal .num { background: #fff; }
+@keyframes pop { 0% { transform: scale(2.2); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+.miss {
+  position: absolute; width: calc(56px / var(--z,1)); height: calc(56px / var(--z,1)); margin: calc(-28px / var(--z,1)) 0 0 calc(-28px / var(--z,1));
+  animation: missfade .9s ease-out forwards;
+}
+.miss svg { width: 100%; height: 100%; }
+@keyframes missfade { 0% { transform: scale(.4); opacity: 0; } 20% { transform: scale(1.1); opacity: 1; } 60% { transform: scale(1); opacity: 1; } 100% { transform: scale(1); opacity: 0; } }
+.glow {
+  position: absolute; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(255,230,120,.0) 35%, rgba(255,230,120,.55) 60%, rgba(255,230,120,0) 72%);
+  animation: glow 1s ease-in-out 3;
+}
+@keyframes glow { 0%,100% { transform: scale(.85); opacity: .2; } 50% { transform: scale(1.1); opacity: 1; } }
+.pane.shake { animation: shake .35s; }
+@keyframes shake { 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
+
+.zoom-reset { position: absolute; right: max(18px, env(safe-area-inset-right, 0px)); bottom: 22px; z-index: 5; }
+.loading {
+  position: absolute; inset: 0; display: flex; flex-direction: column; gap: 16px; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 24px; color: #fff; background: #10213F; z-index: 6;
+}
+.loading .mag { width: 90px; height: 90px; animation: sweep 1.4s ease-in-out infinite; }
+@keyframes sweep { 0%,100% { transform: translate(-30px, 0) rotate(-8deg); } 50% { transform: translate(30px, -8px) rotate(8deg); } }
+
+/* ---------- Overlay dialogs ---------- */
+.veil {
+  position: fixed; inset: 0; z-index: 20; background: rgba(10,22,44,.62);
+  display: flex; align-items: center; justify-content: center;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px;
+  animation: fadein .25s ease;
+}
+@keyframes fadein { from { opacity: 0; } }
+.sheet {
+  background: var(--paper); color: var(--ink); border-radius: 30px; width: 100%; max-width: 520px;
+  padding: 30px 26px 26px; text-align: center; box-shadow: 0 12px 0 rgba(0,0,0,.18);
+  display: flex; flex-direction: column; gap: 16px; align-items: center;
+  animation: rise .45s cubic-bezier(.2,1.4,.4,1);
+  max-height: 100%; overflow-y: auto;
+}
+@keyframes rise { from { transform: translateY(40px) scale(.9); opacity: 0; } }
+.sheet h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 40px; line-height: 1.1; text-wrap: balance; }
+.sheet p { margin: 0; color: var(--ink-soft); font-size: 17px; line-height: 1.5; }
+.big-stars { display: flex; gap: 10px; }
+.big-stars svg { width: 76px; height: 76px; }
+.big-stars svg:nth-child(2) { transform: translateY(-14px); }
+.big-stars .s { animation: starin .6s cubic-bezier(.2,1.8,.4,1) both; }
+.big-stars .s:nth-child(2) { animation-delay: .25s; }
+.big-stars .s:nth-child(3) { animation-delay: .5s; }
+@keyframes starin { from { transform: scale(0) rotate(-90deg); } }
+.stats { display: flex; gap: 10px; width: 100%; }
+.stats div { flex: 1; background: var(--sky); border-radius: 16px; padding: 10px 6px; display: flex; flex-direction: column; gap: 2px; }
+.stats b { font-family: var(--font-display); font-weight: 400; font-size: 26px; font-variant-numeric: tabular-nums; }
+.stats span { font-size: 14px; color: var(--ink-soft); }
+.btns { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.btn {
+  font-family: var(--font-display); font-size: 23px; padding: 15px 20px; border-radius: 20px; width: 100%;
+  background: var(--sky); color: var(--ink); box-shadow: 0 5px 0 var(--sky-deep);
+}
+.btn:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--sky-deep); }
+.btn.primary { background: var(--berry); color: #fff; box-shadow: 0 5px 0 var(--berry-dark); }
+.btn.primary:active { box-shadow: 0 2px 0 var(--berry-dark); }
+.credits { text-align: left; font-size: 14px; color: var(--ink-soft); line-height: 1.5; width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.credits div { overflow-wrap: anywhere; }
+.credits b { color: var(--ink); font-weight: 400; font-family: var(--font-display); font-size: 16px; }
+.credits a { color: var(--ink-soft); }
+
+#confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 30; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(26px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: #fff; padding: 12px 20px; border-radius: 16px; z-index: 40; font-size: 17px;
+  max-width: calc(100% - 32px); text-align: center; animation: fadein .2s;
+}
+
+@media (max-width: 640px) {
+  .pill { height: 44px; min-width: 44px; padding: 0 12px; font-size: 18px; }
+  .dot { width: 16px; height: 16px; border-width: 2px; }
+  .hide-sm { display: none !important; }
+  .levels button { padding: 8px 12px; font-size: 17px; }
+  .levels button small { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
+}
+</style>
+
+<!-- ================= HOME ================= -->
+<section id="home" class="screen">
+  <div class="home-in">
+    <header class="brand">
+      <svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="42" cy="42" r="30" fill="#fff" stroke="#1C2A4A" stroke-width="8"/>
+        <circle cx="42" cy="42" r="20" fill="#B9E0FB"/>
+        <path d="M30 34a14 14 0 0 1 14-10" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/>
+        <path d="M64 64l22 22" stroke="#1C2A4A" stroke-width="13" stroke-linecap="round"/>
+        <path d="M64 64l22 22" stroke="#FF4F7B" stroke-width="7" stroke-linecap="round"/>
+        <path d="M80 12l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#FFC633"/>
+      </svg>
+      <div>
+        <h1>틀린그림 <span>탐험대</span></h1>
+        <p>두 사진에서 달라진 곳을 콕! 눌러 찾아보세요.</p>
+      </div>
+    </header>
+
+    <div class="row-head">
+      <h2>사진을 골라요</h2>
+      <div class="levels" role="group" aria-label="난이도">
+        <button id="lv-easy" data-lv="easy">쉬움 <small>5곳</small></button>
+        <button id="lv-normal" data-lv="normal">보통 <small>7곳</small></button>
+        <button id="lv-hard" data-lv="hard">어려움 <small>10곳</small></button>
+      </div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+
+    <div class="how">
+      <div><i>👆</i><span>다른 곳을 찾으면 <b>왼쪽이든 오른쪽이든</b> 눌러요.</span></div>
+      <div><i>🤏</i><span>두 손가락으로 벌리면 <b>두 사진이 같이</b> 커져요.</span></div>
+      <div><i>💡</i><span>어려우면 <b>힌트</b>를 눌러요. 한 판에 3번!</span></div>
+      <div><i>📷</i><span><b>내 사진</b>을 넣으면 새 문제가 자동으로 만들어져요.</span></div>
+    </div>
+
+    <div class="foot">
+      <span>사진은 위키미디어 공용의 자유 이용 사진이에요.</span>
+      <button id="creditsBtn">사진 출처 보기</button>
+    </div>
+  </div>
+  <input type="file" id="fileInput" accept="image/*">
+</section>
+
+<!-- ================= GAME ================= -->
+<section id="game" class="screen" hidden>
+  <div class="bar">
+    <button class="pill" id="backBtn" aria-label="처음으로">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="pill timer hide-sm" id="timer" aria-label="걸린 시간">0:00</div>
+    <div class="spacer"></div>
+    <div class="dots" id="dots" aria-hidden="true"></div>
+    <div class="found-txt" id="foundTxt"><b>0</b> / 5</div>
+    <div class="spacer"></div>
+    <button class="pill" id="soundBtn" aria-label="소리 켜기/끄기"></button>
+    <button class="pill hint" id="hintBtn">💡 힌트 <span class="cnt" id="hintCnt">3</span></button>
+  </div>
+  <div class="board" id="board">
+    <div class="panes" id="panes">
+      <div class="pane" id="paneA"><span class="tag">원래 사진</span><div class="stage"><canvas id="cvA"></canvas><div class="marks"></div></div></div>
+      <div class="pane" id="paneB"><span class="tag">달라진 사진</span><div class="stage"><canvas id="cvB"></canvas><div class="marks"></div></div></div>
+    </div>
+    <button class="pill zoom-reset" id="zoomReset" hidden>🔍 원래 크기</button>
+    <div class="loading" id="loading">
+      <svg class="mag" viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="42" cy="42" r="28" fill="rgba(255,255,255,.15)" stroke="#fff" stroke-width="8"/>
+        <path d="M63 63l22 22" stroke="#FF4F7B" stroke-width="11" stroke-linecap="round"/>
+      </svg>
+      <span id="loadingTxt">틀린 곳을 숨기는 중…</span>
+    </div>
+  </div>
+</section>
+
+<canvas id="confetti"></canvas>
+
+<script>
+"use strict";
+/* ================= Data ================= */
+const PHOTOS = window.PHOTOS_DATA || [];
+const LEVELS = {
+  easy:   { count: 5,  radius: 0.085, thr: 42, hints: 3 },
+  normal: { count: 7,  radius: 0.068, thr: 34, hints: 3 },
+  hard:   { count: 10, radius: 0.054, thr: 28, hints: 3 },
+};
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("std:" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("std:" + k, JSON.stringify(v)); } catch (e) {} },
+};
+
+/* IndexedDB for the family's own photos (stays on this tablet only) */
+const idb = {
+  db: null,
+  open() {
+    if (this.db) return Promise.resolve(this.db);
+    return new Promise((res, rej) => {
+      try {
+        const r = indexedDB.open("spot-diff", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("photos", { keyPath: "id" });
+        r.onsuccess = () => { this.db = r.result; res(this.db); };
+        r.onerror = () => rej(r.error);
+      } catch (e) { rej(e); }
+    });
+  },
+  async all() {
+    try { const db = await this.open();
+      return await new Promise((res) => { const q = db.transaction("photos").objectStore("photos").getAll(); q.onsuccess = () => res(q.result || []); q.onerror = () => res([]); });
+    } catch (e) { return []; }
+  },
+  async put(o) { try { const db = await this.open(); await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").put(o); t.oncomplete = res; t.onerror = res; }); } catch (e) {} },
+  async del(id) { try { const db = await this.open(); await new Promise((res) => { const t = db.transaction("photos", "readwrite"); t.objectStore("photos").delete(id); t.oncomplete = res; t.onerror = res; }); } catch (e) {} },
+};
+let myPhotos = [];       // in-memory list (also works when storage is blocked)
+
+/* ================= Sound (synthesized, no files) ================= */
+const sound = {
+  ctx: null, on: store.get("sound", true),
+  ensure() { if (!this.ctx) { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (this.ctx && this.ctx.state === "suspended") this.ctx.resume(); },
+  tone(f, t0, dur, type = "sine", vol = .22) {
+    const c = this.ctx; if (!c) return;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, c.currentTime + t0);
+    g.gain.setValueAtTime(0, c.currentTime + t0);
+    g.gain.linearRampToValueAtTime(vol, c.currentTime + t0 + .015);
+    g.gain.exponentialRampToValueAtTime(.001, c.currentTime + t0 + dur);
+    o.connect(g).connect(c.destination); o.start(c.currentTime + t0); o.stop(c.currentTime + t0 + dur + .05);
+  },
+  play(name) {
+    if (!this.on) return; this.ensure(); if (!this.ctx) return;
+    if (name === "found") { this.tone(784, 0, .25, "triangle"); this.tone(1175, .09, .35, "triangle"); this.tone(1568, .18, .45, "sine", .12); }
+    if (name === "miss") { this.tone(220, 0, .18, "square", .06); this.tone(165, .08, .22, "square", .05); }
+    if (name === "hint") { this.tone(660, 0, .2, "sine", .14); this.tone(990, .12, .3, "sine", .12); }
+    if (name === "win") { [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(f, i * .11, .5, "triangle", .18)); this.tone(1568, .62, .9, "sine", .12); }
+    if (name === "tap") { this.tone(880, 0, .06, "sine", .06); }
+  },
+};
+
+/* ================= Seeded RNG ================= */
+function mulberry(seed) {
+  return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+
+/* ================= Difference engine =================
+   Works on any photo. Finds busy, colourful spots and changes them in ways that still
+   look like a real photo: recolour an object, swap it for another part of the photo,
+   mirror it, turn it, make it bigger, or erase it with nearby texture. Every change is
+   measured afterwards, and changes too faint to see are thrown away. */
+function loadImage(src) {
+  return new Promise((res, rej) => { const im = new Image(); im.decoding = "async"; im.onload = () => res(im); im.onerror = rej; im.src = src; });
+}
+
+function buildPuzzle(img, levelKey, seed) {
+  const L = LEVELS[levelKey], R = mulberry(seed);
+  const maxSide = 1400;
+  const k = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  const W = Math.round(img.naturalWidth * k), H = Math.round(img.naturalHeight * k);
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const cx = cv.getContext("2d", { willReadFrequently: true });
+  cx.drawImage(img, 0, 0, W, H);
+  const src = cx.getImageData(0, 0, W, H), S = src.data;
+  const out = new Uint8ClampedArray(S);
+
+  // --- detail map on an 8px grid: edges + colour, used to pick interesting spots
+  const cs = 8, gw = Math.floor(W / cs), gh = Math.floor(H / cs);
+  const lum = new Float32Array(W * H);
+  for (let i = 0, p = 0; i < W * H; i++, p += 4) lum[i] = .299 * S[p] + .587 * S[p + 1] + .114 * S[p + 2];
+  const cell = new Float32Array(gw * gh), satc = new Float32Array(gw * gh);
+  for (let y = 1; y < gh * cs - 1; y++) for (let x = 1; x < gw * cs - 1; x++) {
+    const i = y * W + x;
+    const g = Math.abs(lum[i + 1] - lum[i - 1]) + Math.abs(lum[i + W] - lum[i - W]);
+    const ci = ((y / cs) | 0) * gw + ((x / cs) | 0);
+    cell[ci] += g;
+    const p = i * 4, mx = Math.max(S[p], S[p + 1], S[p + 2]), mn = Math.min(S[p], S[p + 1], S[p + 2]);
+    satc[ci] += mx ? (mx - mn) / mx : 0;
+  }
+  const n = cs * cs;
+  for (let i = 0; i < cell.length; i++) { cell[i] /= n; satc[i] /= n; }
+
+  const base = Math.min(W, H) * L.radius;
+  const wr = Math.max(1, Math.round(base / cs * .7));
+  const score = new Float32Array(gw * gh);
+  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+    let s = 0, c = 0, sat = 0;
+    for (let yy = gy - wr; yy <= gy + wr; yy++) for (let xx = gx - wr; xx <= gx + wr; xx++) {
+      if (xx < 0 || yy < 0 || xx >= gw || yy >= gh) continue;
+      s += cell[yy * gw + xx]; sat += satc[yy * gw + xx]; c++;
+    }
+    score[gy * gw + gx] = (s / c) * (0.6 + sat / c);
+  }
+  let maxScore = 0; for (const v of score) maxScore = Math.max(maxScore, v);
+
+  // bilinear sample from the ORIGINAL image
+  function sample(x, y, o) {
+    x = Math.max(0, Math.min(W - 1.001, x)); y = Math.max(0, Math.min(H - 1.001, y));
+    const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0;
+    const p00 = (y0 * W + x0) * 4, p10 = p00 + 4, p01 = p00 + W * 4, p11 = p01 + 4;
+    for (let c = 0; c < 3; c++) {
+      o[c] = (S[p00 + c] * (1 - fx) + S[p10 + c] * fx) * (1 - fy) + (S[p01 + c] * (1 - fx) + S[p11 + c] * fx) * fy;
+    }
+  }
+  function rgb2hsv(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    let h = 0;
+    if (d) { if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4; h *= 60; if (h < 0) h += 360; }
+    return [h, mx ? d / mx : 0, mx];
+  }
+  function hsv2rgb(h, s, v) {
+    const c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c;
+    let r, g, b;
+    if (h < 60) [r, g, b] = [c, x, 0]; else if (h < 120) [r, g, b] = [x, c, 0]; else if (h < 180) [r, g, b] = [0, c, x];
+    else if (h < 240) [r, g, b] = [0, x, c]; else if (h < 300) [r, g, b] = [x, 0, c]; else [r, g, b] = [c, 0, x];
+    return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+  }
+
+  const diffs = [];
+  const tmp = [0, 0, 0];
+  const cands = [];
+  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+    const x = gx * cs + cs / 2, y = gy * cs + cs / 2;
+    if (x < base * 1.25 || y < base * 1.25 || x > W - base * 1.25 || y > H - base * 1.25) continue;
+    const s = score[gy * gw + gx] / (maxScore || 1);
+    if (s > .18) cands.push({ x, y, w: Math.pow(s, 1.6) });
+  }
+  // fallback: whole interior if the photo is very plain
+  if (cands.length < L.count * 4) for (let gy = 0; gy < gh; gy += 2) for (let gx = 0; gx < gw; gx += 2) {
+    const x = gx * cs, y = gy * cs;
+    if (x > base * 1.25 && y > base * 1.25 && x < W - base * 1.25 && y < H - base * 1.25) cands.push({ x, y, w: .05 });
+  }
+  let totalW = cands.reduce((a, c) => a + c.w, 0);
+  function pick() { let r = R() * totalW; for (const c of cands) { r -= c.w; if (r <= 0) return c; } return cands[cands.length - 1]; }
+
+  const TYPES = ["color", "color", "color", "erase", "erase", "swap", "swap", "mirror", "turn", "grow"];
+  const minDist = base * 2.7;
+
+  function tryApply(type, cxp, cyp, rx, ry, thr) {
+    const x0 = Math.max(0, Math.floor(cxp - rx - 2)), x1 = Math.min(W - 1, Math.ceil(cxp + rx + 2));
+    const y0 = Math.max(0, Math.floor(cyp - ry - 2)), y1 = Math.min(H - 1, Math.ceil(cyp + ry + 2));
+    const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+    const buf = new Float32Array(bw * bh * 3), alpha = new Float32Array(bw * bh);
+    // type parameters
+    let hueShift = 0, sx = 0, sy = 0, ang = 0, grow = 1, flipV = false;
+    if (type === "color") {
+      // skip grey areas: recolouring them shows nothing
+      let sat = 0, c = 0;
+      for (let y = y0; y <= y1; y += 3) for (let x = x0; x <= x1; x += 3) { const p = (y * W + x) * 4; const h = rgb2hsv(S[p], S[p + 1], S[p + 2]); sat += h[1]; c++; }
+      if (sat / c < .2) return null;
+      hueShift = 110 + R() * 140;
+    }
+    let off = [0, 0, 0];
+    if (type === "swap" || type === "erase") {
+      // swap: bring in another busy spot whose surroundings match, so the seam disappears.
+      // erase: bring in a calm spot with matching surroundings, so the object vanishes.
+      const ring = (px, py, d, n, o) => {
+        for (let i = 0; i < n; i++) {
+          const a = i / n * Math.PI * 2;
+          sample(px + Math.cos(a) * rx * d, py + Math.sin(a) * ry * d, tmp);
+          o.push(tmp[0], tmp[1], tmp[2]);
+        }
+        return o;
+      };
+      const tRing = ring(cxp, cyp, .93, 28, []), tCore = ring(cxp, cyp, .35, 12, ring(cxp, cyp, .1, 4, []));
+      let best = null, bestS = Infinity, bestRd = 0;
+      for (let t = 0; t < 70; t++) {
+        const c = type === "swap" && R() < .7 ? pick() : { x: rx * 1.2 + R() * (W - rx * 2.4), y: ry * 1.2 + R() * (H - ry * 2.4) };
+        if (Math.hypot(c.x - cxp, c.y - cyp) < Math.max(rx, ry) * 2.4) continue;
+        if (c.x < rx + 2 || c.y < ry + 2 || c.x > W - rx - 2 || c.y > H - ry - 2) continue;
+        const sR = ring(c.x, c.y, .93, 28, []), sC = ring(c.x, c.y, .35, 12, ring(c.x, c.y, .1, 4, []));
+        // compare rings after removing the average colour difference (we correct for it below)
+        const m = [0, 0, 0];
+        for (let i = 0; i < sR.length; i++) m[i % 3] += (tRing[i] - sR[i]) / (sR.length / 3);
+        let rd = 0; for (let i = 0; i < sR.length; i++) rd += Math.abs(tRing[i] - sR[i] - m[i % 3]);
+        rd = rd / sR.length + (Math.abs(m[0]) + Math.abs(m[1]) + Math.abs(m[2])) / 9;
+        let cd = 0; for (let i = 0; i < sC.length; i++) cd += Math.abs(tCore[i] - sC[i] - m[i % 3]);
+        cd /= sC.length;
+        const g = score[Math.min(gh - 1, (c.y / cs) | 0) * gw + Math.min(gw - 1, (c.x / cs) | 0)] / (maxScore || 1);
+        const sc = type === "swap" ? rd * 1.6 - cd : rd * 1.4 + g * 60;
+        if (type === "swap" && cd < thr) continue;
+        if (sc < bestS) { bestS = sc; best = c; off = m; bestRd = rd; }
+      }
+      if (!best || bestRd > 30) return null;   // the seam would show
+      sx = best.x - cxp; sy = best.y - cyp;
+    }
+    if (type === "turn") ang = (R() < .5 ? 1 : -1) * (Math.PI / 2 + (R() < .3 ? Math.PI / 2 : 0));
+    if (type === "grow") grow = R() < .7 ? 1.45 : 0.68;
+    if (type === "mirror") flipV = R() < .3;
+
+    const inner = type === "erase" ? .5 : .62;
+    let diffSum = 0, diffN = 0;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const dx = (x - cxp) / rx, dy = (y - cyp) / ry, d = Math.sqrt(dx * dx + dy * dy);
+      if (d >= 1) continue;
+      let a = d < inner ? 1 : 1 - (d - inner) / (1 - inner); a = a * a * (3 - 2 * a);
+      const bi = (y - y0) * bw + (x - x0); alpha[bi] = a;
+      const p = (y * W + x) * 4;
+      let r, g, b;
+      if (type === "color") {
+        const h = rgb2hsv(S[p], S[p + 1], S[p + 2]);
+        const nh = (h[0] + hueShift) % 360, ns = Math.min(1, h[1] * 1.15 + .03);
+        [r, g, b] = h[1] < .08 ? [S[p], S[p + 1], S[p + 2]] : hsv2rgb(nh, ns, h[2]);
+      } else {
+        let qx = x, qy = y;
+        if (type === "swap" || type === "erase") { qx = x + sx; qy = y + sy; }
+        else if (type === "mirror") { if (flipV) qy = 2 * cyp - y; else qx = 2 * cxp - x; }
+        else if (type === "turn") { const ux = x - cxp, uy = y - cyp; qx = cxp + ux * Math.cos(ang) - uy * Math.sin(ang); qy = cyp + ux * Math.sin(ang) + uy * Math.cos(ang); }
+        else if (type === "grow") { qx = cxp + (x - cxp) / grow; qy = cyp + (y - cyp) / grow; }
+        sample(qx, qy, tmp); [r, g, b] = [tmp[0] + off[0], tmp[1] + off[1], tmp[2] + off[2]];
+      }
+      buf[bi * 3] = r; buf[bi * 3 + 1] = g; buf[bi * 3 + 2] = b;
+      if (a > .6) {
+        diffSum += (Math.abs(r - S[p]) + Math.abs(g - S[p + 1]) + Math.abs(b - S[p + 2])) / 3; diffN++;
+      }
+    }
+    const strength = diffN ? diffSum / diffN : 0;
+    if (strength < thr) return null;
+    return { x0, y0, bw, bh, buf, alpha, strength };
+  }
+
+  function commit(res) {
+    const { x0, y0, bw, bh, buf, alpha } = res;
+    for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
+      const bi = y * bw + x, a = alpha[bi]; if (!a) continue;
+      const p = ((y + y0) * W + (x + x0)) * 4;
+      for (let c = 0; c < 3; c++) out[p + c] = out[p + c] * (1 - a) + buf[bi * 3 + c] * a;
+    }
+  }
+
+  let thr = L.thr;
+  for (let attempt = 0; attempt < 900 && diffs.length < L.count; attempt++) {
+    if (attempt === 450) thr *= .7;            // plain photos: accept softer changes
+    const c = pick();
+    const jx = c.x + (R() - .5) * cs, jy = c.y + (R() - .5) * cs;
+    if (diffs.some(d => Math.hypot(d.x - jx, d.y - jy) < minDist)) continue;
+    const size = base * (0.8 + R() * 0.45);
+    const asp = 0.8 + R() * 0.45;
+    const rx = size * Math.sqrt(asp), ry = size / Math.sqrt(asp);
+    if (jx - rx < 4 || jy - ry < 4 || jx + rx > W - 4 || jy + ry > H - 4) continue;
+    // vary types: avoid repeating the previous one
+    const order = TYPES.slice().sort(() => R() - .5);
+    const last = diffs.length ? diffs[diffs.length - 1].type : null;
+    order.sort((a, b) => (a === last) - (b === last));
+    for (const t of order) {
+      const res = tryApply(t, jx, jy, rx, ry, thr);
+      if (res) { commit(res); diffs.push({ x: jx, y: jy, rx, ry, type: t, found: false }); break; }
+    }
+  }
+
+  const outData = new ImageData(out, W, H);
+  return { W, H, original: src, changed: outData, diffs };
+}
+
+/* ================= App state ================= */
+const $ = (s) => document.querySelector(s);
+let level = store.get("level", "normal");
+const st = {
+  photo: null, puzzle: null, startT: 0, elapsed: 0, timerId: 0, misses: 0, hintsLeft: 3, hintsUsed: 0,
+  done: false, seed: 0, view: { z: 1, tx: 0, ty: 0 }, layout: null,
+};
+
+/* ================= Home ================= */
+function starsHTML(n) { let s = ""; for (let i = 0; i < 3; i++) s += i < n ? "<b>★</b>" : "★"; return s; }
+function bestKey(id) { return "best:" + id + ":" + level; }
+
+function renderHome() {
+  document.querySelectorAll(".levels button").forEach(b => b.setAttribute("aria-pressed", b.dataset.lv === level));
+  const g = $("#grid"); g.innerHTML = "";
+  const add = document.createElement("label");
+  add.className = "card add"; add.htmlFor = "fileInput"; add.tabIndex = 0;
+  add.innerHTML = `<div class="plus">+</div><div class="name">내 사진으로 만들기</div><p>찍은 사진이나 앨범 사진을 넣으면<br>틀린 곳이 자동으로 생겨요.</p>`;
+  add.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("#fileInput").click(); } });
+  g.appendChild(add);
+  const all = [...myPhotos.map(p => ({ ...p, mine: true })), ...PHOTOS];
+  for (const p of all) {
+    const b = document.createElement("button"); b.className = "card"; b.id = "card-" + p.id;
+    const best = store.get(bestKey(p.id), 0);
+    b.innerHTML = `<div class="ph"><img alt="" loading="lazy" src="${p.thumb || p.src}"></div>
+      <div class="meta"><span class="name"></span><span class="stars" aria-label="최고 별 ${best}개">${starsHTML(best)}</span></div>`;
+    b.querySelector(".name").textContent = p.name;
+    b.addEventListener("click", () => { sound.ensure(); sound.play("tap"); startGame(p); });
+    if (p.mine) {
+      const d = document.createElement("span"); d.className = "del"; d.textContent = "×"; d.setAttribute("role", "button"); d.setAttribute("aria-label", "이 사진 지우기");
+      d.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (d.dataset.armed) { myPhotos = myPhotos.filter(x => x.id !== p.id); await idb.del(p.id); renderHome(); toast("사진을 지웠어요."); }
+        else { d.dataset.armed = "1"; d.textContent = "지울까요?"; d.style.width = "auto"; d.style.padding = "0 12px"; d.style.borderRadius = "18px"; d.style.fontSize = "15px"; d.style.background = "var(--miss)";
+          setTimeout(() => { if (d.isConnected) { delete d.dataset.armed; d.textContent = "×"; d.removeAttribute("style"); } }, 2500); }
+      });
+      b.querySelector(".ph").appendChild(d);
+    }
+    g.appendChild(b);
+  }
+}
+
+document.querySelectorAll(".levels button").forEach(b => b.addEventListener("click", () => {
+  level = b.dataset.lv; store.set("level", level); sound.ensure(); sound.play("tap"); renderHome();
+}));
+
+$("#fileInput").addEventListener("change", async (e) => {
+  const f = e.target.files && e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try {
+    const url = URL.createObjectURL(f);
+    const im = await loadImage(url);
+    const k = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
+    const c = document.createElement("canvas"); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+    c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    const src = c.toDataURL("image/jpeg", .9);
+    const t = document.createElement("canvas"); const tk = 480 / Math.max(c.width, c.height);
+    t.width = Math.round(c.width * tk); t.height = Math.round(c.height * tk); t.getContext("2d").drawImage(c, 0, 0, t.width, t.height);
+    const n = myPhotos.length + 1;
+    const p = { id: "my" + Date.now(), name: "우리 사진 " + n, src, thumb: t.toDataURL("image/jpeg", .8), added: Date.now() };
+    myPhotos.unshift(p); await idb.put(p); renderHome();
+    startGame({ ...p, mine: true });
+  } catch (err) { toast("이 사진은 열 수 없어요. 다른 사진을 골라 주세요."); }
+});
+
+/* ================= Game ================= */
+const paneA = $("#paneA"), paneB = $("#paneB"), cvA = $("#cvA"), cvB = $("#cvB");
+let wakeLock = null;
+
+async function startGame(p, sameSeed) {
+  st.photo = p; st.done = false; st.misses = 0; st.hintsUsed = 0; st.hintsLeft = LEVELS[level].hints;
+  if (!sameSeed) st.seed = (Math.random() * 1e9) | 0;
+  $("#home").hidden = true; $("#game").hidden = false; $("#loading").hidden = false;
+  $("#loadingTxt").textContent = "틀린 곳을 숨기는 중…";
+  clearMarks(); resetView(); stopTimer(); $("#timer").textContent = "0:00";
+  try { if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
+  let img;
+  try { img = await loadImage(p.src); }
+  catch (e) { $("#loadingTxt").textContent = "사진을 불러오지 못했어요. 뒤로 가서 다시 골라 주세요."; return; }
+  await new Promise(r => setTimeout(r, 30));   // let the loading screen paint
+  const pz = buildPuzzle(img, level, st.seed);
+  st.puzzle = pz;
+  for (const [cv, data] of [[cvA, pz.original], [cvB, pz.changed]]) { cv.width = pz.W; cv.height = pz.H; cv.getContext("2d").putImageData(data, 0, 0); }
+  // Randomly swap which side is "original" only in label terms? Keep A original for clarity.
+  buildDots(); updateHud(); layout();
+  $("#loading").hidden = true;
+  st.startT = performance.now(); st.elapsed = 0; startTimer();
+}
+
+function buildDots() {
+  const d = $("#dots"); d.innerHTML = "";
+  const n = st.puzzle.diffs.length;
+  d.classList.toggle("hide-sm", n > 7);
+  for (let i = 0; i < n; i++) { const s = document.createElement("span"); s.className = "dot"; d.appendChild(s); }
+}
+function updateHud() {
+  const pz = st.puzzle, f = pz.diffs.filter(d => d.found).length;
+  $("#foundTxt").innerHTML = `<b>${f}</b> / ${pz.diffs.length}`;
+  [...$("#dots").children].forEach((el, i) => el.classList.toggle("on", i < f));
+  $("#hintCnt").textContent = st.hintsLeft;
+  $("#hintBtn").disabled = st.hintsLeft <= 0 || st.done;
+  $("#soundBtn").textContent = sound.on ? "🔊" : "🔈";
+}
+function fmt(ms) { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+function startTimer() { stopTimer(); st.timerId = setInterval(() => { if (!document.hidden) $("#timer").textContent = fmt(performance.now() - st.startT); }, 250); }
+function stopTimer() { clearInterval(st.timerId); }
+
+function layout() {
+  const pz = st.puzzle; if (!pz) return;
+  const board = $("#board"), cs = getComputedStyle(board);
+  const w = board.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const h = board.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const gap = 12;
+  const sSide = Math.min((w - gap) / 2 / pz.W, h / pz.H);
+  const sStack = Math.min(w / pz.W, (h - gap) / 2 / pz.H);
+  const stack = sStack > sSide;
+  const s = Math.max(.01, stack ? sStack : sSide);
+  const pw = Math.floor(pz.W * s), ph = Math.floor(pz.H * s);
+  const panes = $("#panes");
+  panes.classList.toggle("stack", stack);
+  panes.style.left = cs.paddingLeft; panes.style.right = cs.paddingRight;
+  panes.style.top = cs.paddingTop; panes.style.bottom = cs.paddingBottom;
+  for (const p of [paneA, paneB]) { p.style.width = pw + "px"; p.style.height = ph + "px"; }
+  st.layout = { pw, ph };
+  clampView(); applyView();
+}
+window.addEventListener("resize", () => { if (!$("#game").hidden) layout(); });
+
+/* ---- synced zoom & pan ---- */
+function resetView() { st.view = { z: 1, tx: 0, ty: 0 }; applyView(); }
+function clampView() {
+  const v = st.view, L = st.layout; if (!L) return;
+  v.z = Math.max(1, Math.min(4, v.z));
+  v.tx = Math.min(0, Math.max(L.pw - L.pw * v.z, v.tx));
+  v.ty = Math.min(0, Math.max(L.ph - L.ph * v.z, v.ty));
+}
+function applyView() {
+  const v = st.view;
+  for (const p of [paneA, paneB]) {
+    const s = p.querySelector(".stage");
+    s.style.transform = `translate(${v.tx}px, ${v.ty}px) scale(${v.z})`;
+    s.style.setProperty("--z", v.z);
+  }
+  $("#zoomReset").hidden = v.z <= 1.01;
+}
+$("#zoomReset").addEventListener("click", () => { resetView(); });
+
+const pointers = new Map();
+let gesture = null;
+function onDown(e) {
+  const pane = e.currentTarget;
+  pane.setPointerCapture && pane.setPointerCapture(e.pointerId);
+  const r = pane.getBoundingClientRect();
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, pane, r });
+  if (pointers.size === 1) gesture = { type: "tap", sx: e.clientX, sy: e.clientY, t: performance.now(), v0: { ...st.view }, pane, r };
+  else if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    gesture = { type: "pinch", d0: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, v0: { ...st.view }, r: a.r };
+  }
+}
+function onMove(e) {
+  const p = pointers.get(e.pointerId); if (!p || !gesture) return;
+  p.x = e.clientX; p.y = e.clientY;
+  if (gesture.type === "tap" || gesture.type === "pan") {
+    const dx = e.clientX - gesture.sx, dy = e.clientY - gesture.sy;
+    if (gesture.type === "tap" && Math.hypot(dx, dy) > 12) gesture.type = "pan";
+    if (gesture.type === "pan" && st.view.z > 1) {
+      st.view.tx = gesture.v0.tx + dx; st.view.ty = gesture.v0.ty + dy; clampView(); applyView();
+    }
+  } else if (gesture.type === "pinch" && pointers.size >= 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const v0 = gesture.v0, z = Math.max(1, Math.min(4, v0.z * d / gesture.d0));
+    // keep the point under the fingers fixed
+    const lx = gesture.mx - gesture.r.left, ly = gesture.my - gesture.r.top;
+    const ix = (lx - v0.tx) / v0.z, iy = (ly - v0.ty) / v0.z;
+    st.view.z = z;
+    st.view.tx = (mx - gesture.r.left) - ix * z; st.view.ty = (my - gesture.r.top) - iy * z;
+    clampView(); applyView();
+  }
+}
+function onUp(e) {
+  const p = pointers.get(e.pointerId); pointers.delete(e.pointerId);
+  if (!gesture) return;
+  if (gesture.type === "tap" && pointers.size === 0 && e.type === "pointerup" && performance.now() - gesture.t < 700) {
+    handleTap(gesture.pane, e.clientX, e.clientY);
+  }
+  if (pointers.size === 0) gesture = null;
+  else if (gesture.type === "pinch") gesture = { type: "done" };
+}
+for (const p of [paneA, paneB]) {
+  p.addEventListener("pointerdown", onDown);
+  p.addEventListener("pointermove", onMove);
+  p.addEventListener("pointerup", onUp);
+  p.addEventListener("pointercancel", onUp);
+  p.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const r = p.getBoundingClientRect(), v = st.view;
+    const lx = e.clientX - r.left, ly = e.clientY - r.top, ix = (lx - v.tx) / v.z, iy = (ly - v.ty) / v.z;
+    v.z = Math.max(1, Math.min(4, v.z * Math.exp(-e.deltaY * .0025)));
+    v.tx = lx - ix * v.z; v.ty = ly - iy * v.z; clampView(); applyView();
+  }, { passive: false });
+  p.addEventListener("contextmenu", e => e.preventDefault());
+}
+// stop iOS Safari page zoom gestures
+document.addEventListener("gesturestart", e => e.preventDefault());
+
+function toImage(pane, clientX, clientY) {
+  const r = pane.getBoundingClientRect(), v = st.view, L = st.layout;
+  const lx = (clientX - r.left - v.tx) / v.z, ly = (clientY - r.top - v.ty) / v.z;
+  return { x: lx / L.pw * st.puzzle.W, y: ly / L.ph * st.puzzle.H, k: st.puzzle.W / L.pw / v.z };
+}
+
+let missBurst = [];
+function handleTap(pane, cx, cy) {
+  if (st.done || !st.puzzle) return;
+  sound.ensure();
+  const { x, y, k } = toImage(pane, cx, cy);
+  const pz = st.puzzle;
+  const touchSlack = 22 * k;          // fingers are bigger than the mark
+  let hit = null, best = Infinity;
+  for (const d of pz.diffs) {
+    if (d.found) continue;
+    const dx = (x - d.x) / (d.rx * 1.1 + touchSlack), dy = (y - d.y) / (d.ry * 1.1 + touchSlack);
+    const dist = dx * dx + dy * dy;
+    if (dist <= 1 && dist < best) { best = dist; hit = d; }
+  }
+  if (hit) {
+    hit.found = true;
+    const idx = pz.diffs.filter(d => d.found).length;
+    drawRing(hit, idx, false);
+    sound.play("found");
+    if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) {}
+    updateHud();
+    if (pz.diffs.every(d => d.found)) win();
+  } else {
+    // already found spot? ignore quietly
+    if (pz.diffs.some(d => d.found && Math.hypot((x - d.x) / d.rx, (y - d.y) / d.ry) < 1.3)) return;
+    st.misses++;
+    drawMiss(x, y);
+    sound.play("miss");
+    pane.classList.remove("shake"); void pane.offsetWidth; pane.classList.add("shake");
+    const now = performance.now();
+    missBurst = missBurst.filter(t => now - t < 3000); missBurst.push(now);
+    if (missBurst.length >= 4) { missBurst = []; toast("천천히 두 사진을 비교해 봐요 🔎"); }
+  }
+}
+
+function clearMarks() { document.querySelectorAll(".marks").forEach(m => m.innerHTML = ""); }
+function pct(v, total) { return (v / total * 100) + "%"; }
+function drawRing(d, idx, reveal) {
+  const pz = st.puzzle, pad = 1.18;
+  for (const pane of [paneA, paneB]) {
+    const el = document.createElement("div"); el.className = "ring" + (reveal ? " reveal" : "");
+    el.style.left = pct(d.x - d.rx * pad, pz.W); el.style.top = pct(d.y - d.ry * pad, pz.H);
+    el.style.width = pct(d.rx * 2 * pad, pz.W); el.style.height = pct(d.ry * 2 * pad, pz.H);
+    el.innerHTML = `<span class="num">${idx}</span>`;
+    pane.querySelector(".marks").appendChild(el);
+  }
+}
+function drawMiss(x, y) {
+  const pz = st.puzzle;
+  for (const pane of [paneA, paneB]) {
+    const el = document.createElement("div"); el.className = "miss";
+    el.style.left = pct(x, pz.W); el.style.top = pct(y, pz.H);
+    el.innerHTML = `<svg viewBox="0 0 56 56"><circle cx="28" cy="28" r="24" fill="rgba(240,69,58,.25)" stroke="#fff" stroke-width="4"/><path d="M19 19l18 18M37 19L19 37" stroke="#F0453A" stroke-width="7" stroke-linecap="round"/><path d="M19 19l18 18M37 19L19 37" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".6"/></svg>`;
+    pane.querySelector(".marks").appendChild(el);
+    setTimeout(() => el.remove(), 950);
+  }
+}
+
+$("#hintBtn").addEventListener("click", () => {
+  if (st.done || st.hintsLeft <= 0) return;
+  const left = st.puzzle.diffs.filter(d => !d.found);
+  if (!left.length) return;
+  const d = left[(Math.random() * left.length) | 0];
+  st.hintsLeft--; st.hintsUsed++;
+  sound.play("hint");
+  const pz = st.puzzle;
+  // a soft glow near (not exactly on) the spot, so finding it is still her job
+  const R2 = Math.max(d.rx, d.ry) * 2.6;
+  const ox = d.x + (Math.random() - .5) * d.rx * .9, oy = d.y + (Math.random() - .5) * d.ry * .9;
+  for (const pane of [paneA, paneB]) {
+    const el = document.createElement("div"); el.className = "glow";
+    el.style.left = pct(ox - R2, pz.W); el.style.top = pct(oy - R2, pz.H);
+    el.style.width = pct(R2 * 2, pz.W); el.style.height = pct(R2 * 2, pz.H);
+    pane.querySelector(".marks").appendChild(el);
+    setTimeout(() => el.remove(), 3100);
+  }
+  updateHud();
+});
+
+$("#soundBtn").addEventListener("click", () => { sound.on = !sound.on; store.set("sound", sound.on); sound.ensure(); if (sound.on) sound.play("tap"); updateHud(); });
+$("#backBtn").addEventListener("click", goHome);
+function goHome() {
+  stopTimer(); st.done = true; closeVeil();
+  try { wakeLock && wakeLock.release(); } catch (e) {} wakeLock = null;
+  $("#game").hidden = true; $("#home").hidden = false; renderHome();
+}
+
+/* ---- win ---- */
+function calcStars() {
+  if (st.hintsUsed === 0 && st.misses <= 2) return 3;
+  if (st.hintsUsed <= 1 && st.misses <= 6) return 2;
+  return 1;
+}
+const CHEERS = ["대단해요!", "눈이 정말 좋아요!", "최고의 탐험가!", "모두 찾았어요!", "와, 완벽해요!"];
+function starSVG(on) {
+  return `<svg class="s" viewBox="0 0 24 24"><path d="M12 2.6l2.9 6 6.5.8-4.8 4.5 1.2 6.5L12 17.3l-5.8 3.1 1.2-6.5L2.6 9.4l6.5-.8z" fill="${on ? "#FFC633" : "#E3E8F2"}" stroke="${on ? "#D99A00" : "#C9D1E0"}" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+}
+function win() {
+  st.done = true; stopTimer();
+  const ms = performance.now() - st.startT, stars = calcStars();
+  const key = bestKey(st.photo.id); if (stars > store.get(key, 0)) store.set(key, stars);
+  updateHud();
+  setTimeout(() => {
+    sound.play("win"); confetti();
+    const all = [...myPhotos.map(p => ({ ...p, mine: true })), ...PHOTOS];
+    const i = all.findIndex(p => p.id === st.photo.id), next = all[(i + 1) % all.length];
+    showVeil(`
+      <div class="big-stars">${starSVG(stars >= 1)}${starSVG(stars >= 2)}${starSVG(stars >= 3)}</div>
+      <h2>${CHEERS[(Math.random() * CHEERS.length) | 0]}</h2>
+      <div class="stats">
+        <div><b>${fmt(ms)}</b><span>걸린 시간</span></div>
+        <div><b>${st.misses}</b><span>헛짚은 곳</span></div>
+        <div><b>${st.hintsUsed}</b><span>쓴 힌트</span></div>
+      </div>
+      <div class="btns">
+        <button class="btn primary" id="nextBtn">다음 사진 ▶</button>
+        <button class="btn" id="againBtn">같은 사진, 새 틀린 곳</button>
+        <button class="btn" id="homeBtn">처음으로</button>
+      </div>`);
+    $("#nextBtn").onclick = () => { closeVeil(); startGame(next); };
+    $("#againBtn").onclick = () => { closeVeil(); startGame(st.photo); };
+    $("#homeBtn").onclick = goHome;
+  }, 650);
+}
+
+function showVeil(html) {
+  closeVeil();
+  const v = document.createElement("div"); v.className = "veil"; v.id = "veil";
+  v.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
+  document.body.appendChild(v);
+  return v;
+}
+function closeVeil() { const v = $("#veil"); if (v) v.remove(); }
+
+$("#creditsBtn").addEventListener("click", () => {
+  const rows = PHOTOS.map(p => `<div><b>${esc(p.name)}</b><br>${esc(p.credit)} · ${esc(p.license)}<br><a href="${p.page}" target="_blank" rel="noopener">${esc(p.page.replace("https://", ""))}</a></div>`).join("");
+  showVeil(`<h2>사진 출처</h2><p>위키미디어 공용(Wikimedia Commons)의 자유 이용 사진입니다. 게임을 위해 크기를 줄이고 틀린 곳을 만들어 변형했어요.</p><div class="credits">${rows}</div><div class="btns"><button class="btn primary" id="closeCr">닫기</button></div>`);
+  $("#closeCr").onclick = closeVeil;
+  $("#veil").addEventListener("click", e => { if (e.target.id === "veil") closeVeil(); });
+});
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+let toastT = 0;
+function toast(msg) {
+  document.querySelectorAll(".toast").forEach(t => t.remove());
+  const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.appendChild(t);
+  clearTimeout(toastT); toastT = setTimeout(() => t.remove(), 2600);
+}
+
+/* ---- confetti ---- */
+function confetti() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const c = $("#confetti"), x = c.getContext("2d"), dpr = Math.min(2, devicePixelRatio || 1);
+  c.width = innerWidth * dpr; c.height = innerHeight * dpr; x.scale(dpr, dpr);
+  const colors = ["#FFC633", "#FF4F7B", "#23B38A", "#4AA8F0", "#FFFFFF", "#FF9A3C"];
+  const parts = Array.from({ length: 170 }, () => ({
+    x: innerWidth / 2 + (Math.random() - .5) * 160, y: innerHeight * .45,
+    vx: (Math.random() - .5) * 17, vy: -Math.random() * 17 - 5, r: 5 + Math.random() * 7,
+    a: Math.random() * 6, va: (Math.random() - .5) * .35, c: colors[(Math.random() * colors.length) | 0], sh: Math.random() < .3,
+  }));
+  const t0 = performance.now();
+  (function step(t) {
+    x.clearRect(0, 0, innerWidth, innerHeight);
+    for (const p of parts) {
+      p.vy += .38; p.vx *= .99; p.x += p.vx; p.y += p.vy; p.a += p.va;
+      x.save(); x.translate(p.x, p.y); x.rotate(p.a); x.fillStyle = p.c;
+      if (p.sh) { x.beginPath(); x.arc(0, 0, p.r / 2, 0, 7); x.fill(); } else x.fillRect(-p.r / 2, -p.r / 4, p.r, p.r / 2);
+      x.restore();
+    }
+    if (t - t0 < 3200) requestAnimationFrame(step); else x.clearRect(0, 0, innerWidth, innerHeight);
+  })(t0);
+}
+
+document.addEventListener("visibilitychange", async () => {
+  if (!document.hidden && !$("#game").hidden && !st.done) { try { if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {} }
+});
+
+/* ---- boot ---- */
+(async function boot() {
+  renderHome();
+  myPhotos = (await idb.all()).sort((a, b) => b.added - a.added);
+  if (myPhotos.length) renderHome();
+})();
+</script>
