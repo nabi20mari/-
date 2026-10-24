@@ -281,7 +281,7 @@ button.pill:active { background: rgba(255,255,255,.24); }
     <div class="how">
       <div><i>👆</i><span>다른 곳을 찾으면 <b>왼쪽이든 오른쪽이든</b> 눌러요.</span></div>
       <div><i>🤏</i><span>두 손가락으로 벌리면 <b>두 사진이 같이</b> 커져요.</span></div>
-      <div><i>💡</i><span>어려우면 <b>힌트</b>를 눌러요. 한 판에 3번!</span></div>
+      <div><i>💡</i><span>어려우면 <b>힌트</b>를 눌러요. 한 판에 3번 (어려움은 2번)!</span></div>
       <div><i>📷</i><span><b>내 사진</b>을 넣으면 새 문제가 자동으로 만들어져요.</span></div>
     </div>
 
@@ -384,15 +384,6 @@ const PHOTOS = [
   "page": "https://commons.wikimedia.org/wiki/File%3ACloseup_colorful_houses_Nuuk_Greenland.jpg"
  },
  {
-  "id": "nemo",
-  "name": "흰동가리",
-  "src": "photos/nemo.jpg",
-  "thumb": "photos/nemo_t.jpg",
-  "credit": "Ritiks",
-  "license": "CC BY-SA 3.0",
-  "page": "https://commons.wikimedia.org/wiki/File%3AClown_fish_in_the_Andaman_Coral_Reef.jpg"
- },
- {
   "id": "flowers",
   "name": "꽃 시장",
   "src": "photos/flowers.jpg",
@@ -418,15 +409,6 @@ const PHOTOS = [
   "credit": "Trogain",
   "license": "CC BY-SA 4.0",
   "page": "https://commons.wikimedia.org/wiki/File%3AGarden_gnomes_-_Uraj%C3%A4rvi_Manor_Museum.jpg"
- },
- {
-  "id": "beach",
-  "name": "해변 오두막",
-  "src": "photos/beach.jpg",
-  "thumb": "photos/beach_t.jpg",
-  "credit": "Gzzz",
-  "license": "CC BY-SA 3.0",
-  "page": "https://commons.wikimedia.org/wiki/File%3ACabines_de_bain_Berck.jpg"
  },
  {
   "id": "lollipop",
@@ -465,10 +447,11 @@ const PHOTOS = [
   "page": "https://commons.wikimedia.org/wiki/File%3AHotair_balloons_amk.jpg"
  }
 ];
+const MIX = [["recolor", .4], ["remove", .26], ["add", .14], ["flip", .1], ["shrink", .1]];
 const LEVELS = {
-  easy:   { count: 5,  radius: 0.085, thr: 42, hints: 3 },
-  normal: { count: 7,  radius: 0.068, thr: 34, hints: 3 },
-  hard:   { count: 10, radius: 0.054, thr: 28, hints: 3 },
+  easy:   { count: 5,  rMin: .03,  rMax: .09,  thr: 40, hue: [120, 220], mix: MIX, hints: 3 },
+  normal: { count: 7,  rMin: .022, rMax: .065, thr: 32, hue: [90, 180],  mix: MIX, hints: 3 },
+  hard:   { count: 10, rMin: .015, rMax: .045, thr: 26, hue: [60, 130],  mix: [["recolor", .36], ["remove", .3], ["add", .16], ["flip", .09], ["shrink", .09]], hints: 2 },
 };
 
 const store = {
@@ -529,10 +512,13 @@ function mulberry(seed) {
 }
 
 /* ================= Difference engine =================
-   Works on any photo. Finds busy, colourful spots and changes them in ways that still
-   look like a real photo: recolour an object, swap it for another part of the photo,
-   mirror it, turn it, make it bigger, or erase it with nearby texture. Every change is
-   measured afterwards, and changes too faint to see are thrown away. */
+   Works on any photo, object by object:
+   1. find real objects by growing a region of similar colour from a seed point,
+      so each change follows the object's own outline instead of a round blob;
+   2. change it the way hand-made puzzles do: give it a new colour, make it vanish
+      (filled from matching background with a seamless Poisson blend), add a copy of
+      another object somewhere it fits, turn it the other way, or make it smaller;
+   3. measure the result and throw away changes that are too faint or leave a seam. */
 function loadImage(src) {
   return new Promise((res, rej) => { const im = new Image(); im.decoding = "async"; im.onload = () => res(im); im.onerror = rej; im.src = src; });
 }
@@ -541,49 +527,308 @@ function buildPuzzle(img, levelKey, seed) {
   const L = LEVELS[levelKey], R = mulberry(seed);
   const maxSide = 1400;
   const k = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
-  const W = Math.round(img.naturalWidth * k), H = Math.round(img.naturalHeight * k);
+  const W = Math.round(img.naturalWidth * k), H = Math.round(img.naturalHeight * k), N = W * H;
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
   const cx = cv.getContext("2d", { willReadFrequently: true });
   cx.drawImage(img, 0, 0, W, H);
   const src = cx.getImageData(0, 0, W, H), S = src.data;
-  const out = new Uint8ClampedArray(S);
+  const B = Math.min(W, H);
 
-  // --- detail map on an 8px grid: edges + colour, used to pick interesting spots
-  const cs = 8, gw = Math.floor(W / cs), gh = Math.floor(H / cs);
-  const lum = new Float32Array(W * H);
-  for (let i = 0, p = 0; i < W * H; i++, p += 4) lum[i] = .299 * S[p] + .587 * S[p + 1] + .114 * S[p + 2];
-  const cell = new Float32Array(gw * gh), satc = new Float32Array(gw * gh);
-  for (let y = 1; y < gh * cs - 1; y++) for (let x = 1; x < gw * cs - 1; x++) {
+  // original (o*) and working copy (c*) as float channels
+  const oR = new Float32Array(N), oG = new Float32Array(N), oB = new Float32Array(N);
+  for (let i = 0, p = 0; i < N; i++, p += 4) { oR[i] = S[p]; oG[i] = S[p + 1]; oB[i] = S[p + 2]; }
+  const cR = oR.slice(), cG = oG.slice(), cB = oB.slice();
+  const O = [oR, oG, oB], C = [cR, cG, cB];
+
+  // smoothed Lab for segmentation
+  function blur3(a) {
+    const t = new Float32Array(N), o = new Float32Array(N);
+    for (let y = 0; y < H; y++) { const r = y * W; for (let x = 0; x < W; x++) { const l = x > 0 ? x - 1 : x, rr = x < W - 1 ? x + 1 : x; t[r + x] = (a[r + l] + a[r + x] + a[r + rr]) / 3; } }
+    for (let y = 0; y < H; y++) { const u = (y > 0 ? y - 1 : y) * W, d = (y < H - 1 ? y + 1 : y) * W, r = y * W; for (let x = 0; x < W; x++) o[r + x] = (t[u + x] + t[r + x] + t[d + x]) / 3; }
+    return o;
+  }
+  const sR = blur3(blur3(oR)), sG = blur3(blur3(oG)), sB = blur3(blur3(oB));
+  const lin = new Float32Array(256);
+  for (let i = 0; i < 256; i++) { const v = i / 255; lin[i] = v <= .04045 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }
+  const fl = (v) => { const x = Math.max(0, Math.min(255, v)); const i = x | 0, f = x - i; return lin[i] * (1 - f) + lin[Math.min(255, i + 1)] * f; };
+  const LL = new Float32Array(N), LA = new Float32Array(N), LB = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const r = fl(sR[i]), g = fl(sG[i]), b = fl(sB[i]);
+    const X = (.4124 * r + .3576 * g + .1805 * b) / .9505, Y = .2126 * r + .7152 * g + .0722 * b, Z = (.0193 * r + .1192 * g + .9505 * b) / 1.089;
+    const f = (t) => t > .008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+    const fx = f(X), fy = f(Y), fz = f(Z);
+    LL[i] = 116 * fy - 16; LA[i] = 500 * (fx - fy); LB[i] = 200 * (fy - fz);
+  }
+  const grad = new Float32Array(N);
+  for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
     const i = y * W + x;
-    const g = Math.abs(lum[i + 1] - lum[i - 1]) + Math.abs(lum[i + W] - lum[i - W]);
-    const ci = ((y / cs) | 0) * gw + ((x / cs) | 0);
-    cell[ci] += g;
-    const p = i * 4, mx = Math.max(S[p], S[p + 1], S[p + 2]), mn = Math.min(S[p], S[p + 1], S[p + 2]);
-    satc[ci] += mx ? (mx - mn) / mx : 0;
+    grad[i] = Math.abs(LL[i + 1] - LL[i - 1]) + Math.abs(LL[i + W] - LL[i - W]) + .5 * (Math.abs(LA[i + 1] - LA[i - 1]) + Math.abs(LB[i + W] - LB[i - W]));
   }
-  const n = cs * cs;
-  for (let i = 0; i < cell.length; i++) { cell[i] /= n; satc[i] /= n; }
 
-  const base = Math.min(W, H) * L.radius;
-  const wr = Math.max(1, Math.round(base / cs * .7));
-  const score = new Float32Array(gw * gh);
+  // seed candidates: cells with lots of edges (that is where objects are)
+  const cs = 12, gw = Math.floor(W / cs), gh = Math.floor(H / cs);
+  const cell = new Float32Array(gw * gh);
+  for (let y = 0; y < gh * cs; y++) for (let x = 0; x < gw * cs; x++) cell[((y / cs) | 0) * gw + ((x / cs) | 0)] += grad[y * W + x];
+  let cmax = 0; for (const v of cell) cmax = Math.max(cmax, v);
+  let rMin = B * L.rMin, rMax = B * L.rMax;
+  const margin = rMax * 1.3;
+  const cands = [];
   for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
-    let s = 0, c = 0, sat = 0;
-    for (let yy = gy - wr; yy <= gy + wr; yy++) for (let xx = gx - wr; xx <= gx + wr; xx++) {
-      if (xx < 0 || yy < 0 || xx >= gw || yy >= gh) continue;
-      s += cell[yy * gw + xx]; sat += satc[yy * gw + xx]; c++;
-    }
-    score[gy * gw + gx] = (s / c) * (0.6 + sat / c);
+    const x = gx * cs + cs / 2, y = gy * cs + cs / 2;
+    if (x < margin || y < margin || x > W - margin || y > H - margin) continue;
+    cands.push({ x, y, w: .05 + Math.pow(cell[gy * gw + gx] / (cmax || 1), 1.3) });
   }
-  let maxScore = 0; for (const v of score) maxScore = Math.max(maxScore, v);
+  const totalW = cands.reduce((a, c) => a + c.w, 0);
+  const pick = () => { let r = R() * totalW; for (const c of cands) { r -= c.w; if (r <= 0) return c; } return cands[cands.length - 1]; };
 
-  // bilinear sample from the ORIGINAL image
-  function sample(x, y, o) {
-    x = Math.max(0, Math.min(W - 1.001, x)); y = Math.max(0, Math.min(H - 1.001, y));
-    const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0;
-    const p00 = (y0 * W + x0) * 4, p10 = p00 + 4, p01 = p00 + W * 4, p11 = p01 + 4;
+  /* ---- segmentation: region growing in Lab ---- */
+  function segment(sx, sy) {
+    // snap the seed to the calmest pixel nearby, so it sits inside an object, not on its edge
+    let bx = sx | 0, by = sy | 0, bg = Infinity;
+    for (let t = 0; t < 24; t++) {
+      const x = (sx + (R() - .5) * cs * 1.5) | 0, y = (sy + (R() - .5) * cs * 1.5) | 0;
+      if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) continue;
+      if (grad[y * W + x] < bg) { bg = grad[y * W + x]; bx = x; by = y; }
+    }
+    const box = Math.ceil(rMax * 1.7);
+    const x0 = Math.max(0, bx - box), y0 = Math.max(0, by - box), x1 = Math.min(W - 1, bx + box), y1 = Math.min(H - 1, by + box);
+    const w = x1 - x0 + 1, h = y1 - y0 + 1;
+    const minA = Math.PI * rMin * rMin, maxA = Math.PI * rMax * rMax;
+    let best = null;
+    const seen = new Int32Array(w * h), q = new Int32Array(w * h);
+    let stamp = 0;
+    for (const T of [7, 10, 13, 17, 22]) {
+      stamp++;
+      let head = 0, tail = 0, area = 0, mL = 0, mA = 0, mB = 0, touched = false, tooBig = false;
+      const si = (by - y0) * w + (bx - x0);
+      q[tail++] = si; seen[si] = stamp;
+      while (head < tail) {
+        const li = q[head++], lx = li % w, ly = (li / w) | 0, gi = (ly + y0) * W + lx + x0;
+        area++; mL += (LL[gi] - mL) / area; mA += (LA[gi] - mA) / area; mB += (LB[gi] - mB) / area;
+        if (area > maxA) { tooBig = true; break; }
+        if (lx === 0 || ly === 0 || lx === w - 1 || ly === h - 1) { touched = true; break; }
+        for (let d = 0; d < 4; d++) {
+          const nx = lx + (d === 0 ? 1 : d === 1 ? -1 : 0), ny = ly + (d === 2 ? 1 : d === 3 ? -1 : 0);
+          const ni = ny * w + nx; if (seen[ni] === stamp) continue;
+          const gn = (ny + y0) * W + nx + x0;
+          const dm = Math.hypot(LL[gn] - mL, LA[gn] - mA, LB[gn] - mB);
+          const dn = Math.hypot(LL[gn] - LL[gi], LA[gn] - LA[gi], LB[gn] - LB[gi]);
+          if (dm < T && dn < T * .45) { seen[ni] = stamp; q[tail++] = ni; }
+        }
+      }
+      if (tooBig || touched) break;
+      if (area >= minA) {
+        const m = new Uint8Array(w * h);
+        for (let i = 0; i < tail; i++) m[q[i]] = 1;
+        best = { m, area };
+      }
+    }
+    if (!best) return null;
+    let m = best.m;
+    m = erode(dilate(m, w, h, 2), w, h, 2);   // close small notches
+    fillHoles(m, w, h);
+    let bx0 = w, by0 = h, bx1 = 0, by1 = 0, A = 0, sxm = 0, sym = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (m[y * w + x]) { A++; sxm += x; sym += y; if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; }
+    const bw = bx1 - bx0 + 1, bh = by1 - by0 + 1;
+    if (A / (bw * bh) < .28 || Math.max(bw, bh) / Math.min(bw, bh) > 3.5) return null;   // stringy shapes look like noise
+    if (bw > rMax * 2.6 || bh > rMax * 2.6) return null;
+    // how much does it stand out? compare a ring just inside the outline with a ring just outside,
+    // and check that a real edge runs all the way around (a whole object, not a random chunk)
+    const in2 = erode(m, w, h, 2), in4 = erode(in2, w, h, 2), out1 = dilate(m, w, h, 1), out4 = dilate(out1, w, h, 3), in1 = erode(m, w, h, 1);
+    const acc = [0, 0, 0, 0, 0, 0]; let ni = 0, no = 0, nb = 0, edged = 0;
+    let edgeThr = 0, en = 0;
+    for (let i = 0; i < w * h; i += 7) { edgeThr += grad[(((i / w) | 0) + y0) * W + (i % w) + x0]; en++; }
+    edgeThr = Math.max(12, edgeThr / en * 1.1);
+    for (let i = 0; i < w * h; i++) {
+      const g = (((i / w) | 0) + y0) * W + (i % w) + x0;
+      if (in2[i] && !in4[i]) { acc[0] += LL[g]; acc[1] += LA[g]; acc[2] += LB[g]; ni++; }
+      else if (out4[i] && !out1[i]) { acc[3] += LL[g]; acc[4] += LA[g]; acc[5] += LB[g]; no++; }
+      if (m[i] && !in1[i]) { nb++; let gm = 0; for (const d of [0, 1, -1, w, -w, 2, -2]) { const j = g + (d === w ? W : d === -w ? -W : d); if (j >= 0 && j < N) gm = Math.max(gm, grad[j]); } if (gm > edgeThr) edged++; }
+    }
+    if (!ni || !no) return null;
+    const contrast = Math.hypot(acc[0] / ni - acc[3] / no, acc[1] / ni - acc[4] / no, acc[2] / ni - acc[5] / no);
+    const closed = nb ? edged / nb : 0;
+    return { x0, y0, w, h, m, A, contrast, closed, cx: x0 + sxm / A, cy: y0 + sym / A, bx0: x0 + bx0, by0: y0 + by0, bx1: x0 + bx1, by1: y0 + by1 };
+  }
+  function dilate(m, w, h, r) {
+    let a = m;
+    for (let k = 0; k < r; k++) {
+      const o = new Uint8Array(w * h);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; o[i] = a[i] || (x > 0 && a[i - 1]) || (x < w - 1 && a[i + 1]) || (y > 0 && a[i - w]) || (y < h - 1 && a[i + w]) ? 1 : 0; }
+      a = o;
+    }
+    return a;
+  }
+  function erode(m, w, h, r) {
+    let a = m;
+    for (let k = 0; k < r; k++) {
+      const o = new Uint8Array(w * h);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; o[i] = a[i] && x > 0 && a[i - 1] && x < w - 1 && a[i + 1] && y > 0 && a[i - w] && y < h - 1 && a[i + w] ? 1 : 0; }
+      a = o;
+    }
+    return a;
+  }
+  function fillHoles(m, w, h) {
+    const out = new Uint8Array(w * h), q = [];
+    for (let x = 0; x < w; x++) { q.push(x, (h - 1) * w + x); }
+    for (let y = 0; y < h; y++) { q.push(y * w, y * w + w - 1); }
+    while (q.length) { const i = q.pop(); if (out[i] || m[i]) continue; out[i] = 1; const x = i % w, y = (i / w) | 0;
+      if (x > 0) q.push(i - 1); if (x < w - 1) q.push(i + 1); if (y > 0) q.push(i - w); if (y < h - 1) q.push(i + w); }
+    for (let i = 0; i < w * h; i++) if (!out[i]) m[i] = 1;
+  }
+  // soft alpha from a hard mask (1px feather)
+  function soften(m, w, h) {
+    const a = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let s = 0, c = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue; s += m[yy * w + xx]; c++; }
+      a[y * w + x] = s / c;
+    }
+    return a;
+  }
+
+  /* ---- undo support ---- */
+  function backup(x0, y0, x1, y1) {
+    x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(W - 1, x1); y1 = Math.min(H - 1, y1);
+    const w = x1 - x0 + 1, h = y1 - y0 + 1, d = [new Float32Array(w * h), new Float32Array(w * h), new Float32Array(w * h)];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const g = (y + y0) * W + x + x0; for (let c = 0; c < 3; c++) d[c][y * w + x] = C[c][g]; }
+    return () => { for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const g = (y + y0) * W + x + x0; for (let c = 0; c < 3; c++) C[c][g] = d[c][y * w + x]; } };
+  }
+
+  /* ---- remove an object: Poisson-blend a matching background patch into its outline ---- */
+  function removeSeg(sg) {
+    const { x0, y0, w, h } = sg;
+    const hole = dilate(sg.m, w, h, 3);
+    const band = [];
+    const ring = dilate(hole, w, h, 4);
+    for (let i = 0; i < w * h; i++) if (ring[i] && !hole[i]) band.push(i);
+    if (band.length < 20) return false;
+    const D = Math.max(sg.bx1 - sg.bx0, sg.by1 - sg.by0) + 8;
+    let best = null, bestS = Infinity;
+    for (let t = 0; t < 90; t++) {
+      const ang = R() * Math.PI * 2, dist = D * (1.05 + R() * 2.6);
+      const dx = Math.round(Math.cos(ang) * dist), dy = Math.round(Math.sin(ang) * dist);
+      if (x0 + dx < 0 || y0 + dy < 0 || x0 + w + dx > W || y0 + h + dy > H) continue;
+      // compare band (target) with band at offset (source), after removing the average colour shift
+      let m0 = 0, m1 = 0, m2 = 0;
+      const step = Math.max(1, (band.length / 160) | 0);
+      let n = 0;
+      for (let j = 0; j < band.length; j += step) { const li = band[j], gt = (((li / w) | 0) + y0) * W + (li % w) + x0, gs = gt + dy * W + dx;
+        m0 += C[0][gt] - oR[gs]; m1 += C[1][gt] - oG[gs]; m2 += C[2][gt] - oB[gs]; n++; }
+      m0 /= n; m1 /= n; m2 /= n;
+      let ssd = 0;
+      for (let j = 0; j < band.length; j += step) { const li = band[j], gt = (((li / w) | 0) + y0) * W + (li % w) + x0, gs = gt + dy * W + dx;
+        ssd += Math.abs(C[0][gt] - oR[gs] - m0) + Math.abs(C[1][gt] - oG[gs] - m1) + Math.abs(C[2][gt] - oB[gs] - m2); }
+      ssd /= n * 3;
+      // the source must look like background, not like another object
+      let ge = 0, gn = 0, be = 0;
+      for (let i = 0; i < w * h; i += 3) if (hole[i]) { const gt = (((i / w) | 0) + y0) * W + (i % w) + x0; ge += grad[gt + dy * W + dx]; gn++; }
+      for (let j = 0; j < band.length; j += step) { const li = band[j]; be += grad[(((li / w) | 0) + y0) * W + (li % w) + x0]; }
+      ge /= gn || 1; be /= n;
+      const sc = ssd + Math.max(0, ge - be * 1.3) * .8 + Math.max(0, be * .6 - ge) * .6 + (Math.abs(m0) + Math.abs(m1) + Math.abs(m2)) * .05;
+      if (sc < bestS) { bestS = sc; best = { dx, dy }; }
+    }
+    if (!best || bestS > 50) return false;
+    poisson(hole, x0, y0, w, h, best.dx, best.dy);
+    // reject a blurry smudge in a detailed area: the fill must keep some texture
+    const lum = (g) => .299 * cR[g] + .587 * cG[g] + .114 * cB[g];
+    let fe = 0, fn = 0, bnd = 0, bn = 0;
+    for (let i = 0; i < w * h; i++) {
+      const x = i % w, y = (i / w) | 0, g = (y + y0) * W + x + x0;
+      if (x + x0 < 1 || y + y0 < 1 || x + x0 >= W - 1 || y + y0 >= H - 1) continue;
+      const e = Math.abs(lum(g + 1) - lum(g - 1)) + Math.abs(lum(g + W) - lum(g - W));
+      if (hole[i] && !sg.m[i]) continue;
+      if (sg.m[i]) { fe += e; fn++; } else if (ring[i]) { bnd += e; bn++; }
+    }
+    fe /= fn || 1; bnd /= bn || 1;
+    if (bnd > 10 && fe < bnd * .4) return false;
+    return true;
+  }
+  // solve  Δf = Δg  inside mask, f = current image on the border (seamless clone)
+  function poisson(mask, x0, y0, w, h, dx, dy) {
+    const idx = [];
+    for (let i = 0; i < w * h; i++) {
+      if (!mask[i]) continue;
+      const x = i % w, y = (i / w) | 0;
+      if (x + x0 <= 0 || y + y0 <= 0 || x + x0 >= W - 1 || y + y0 >= H - 1) continue;
+      idx.push(i);
+    }
+    const inM = new Uint8Array(w * h); for (const i of idx) inM[i] = 1;
     for (let c = 0; c < 3; c++) {
-      o[c] = (S[p00 + c] * (1 - fx) + S[p10 + c] * fx) * (1 - fy) + (S[p01 + c] * (1 - fx) + S[p11 + c] * fx) * fy;
+      const T = C[c], G = O[c];
+      const f = new Float32Array(w * h);
+      // start from the source plus the mean border offset
+      let off = 0, on = 0;
+      for (const i of idx) { const x = i % w, y = (i / w) | 0, g = (y + y0) * W + x + x0;
+        for (const n of [-1, 1, -w, w]) { if (!inM[i + n]) { const gn = g + (n === -1 ? -1 : n === 1 ? 1 : n === -w ? -W : W); off += T[gn] - G[gn + dy * W + dx]; on++; } } }
+      off = on ? off / on : 0;
+      for (const i of idx) { const x = i % w, y = (i / w) | 0; f[i] = G[(y + y0 + dy) * W + x + x0 + dx] + off; }
+      const omega = 1.85, iters = Math.min(260, 60 + Math.sqrt(idx.length) * 2.2);
+      for (let it = 0; it < iters; it++) {
+        for (const i of idx) {
+          const x = i % w, y = (i / w) | 0, g = (y + y0) * W + x + x0, gs = g + dy * W + dx;
+          let s = 0;
+          for (let d = 0; d < 4; d++) {
+            const ln = d === 0 ? i - 1 : d === 1 ? i + 1 : d === 2 ? i - w : i + w;
+            const gn = d === 0 ? g - 1 : d === 1 ? g + 1 : d === 2 ? g - W : g + W;
+            s += (inM[ln] ? f[ln] : T[gn]) + (G[gs] - G[gn + dy * W + dx]);
+          }
+          f[i] += omega * (s / 4 - f[i]);
+        }
+      }
+      for (const i of idx) { const x = i % w, y = (i / w) | 0; T[(y + y0) * W + x + x0] = Math.max(0, Math.min(255, f[i])); }
+    }
+  }
+
+  /* ---- paste an object (from the original) with a transform, following its outline ---- */
+  function pasteSeg(sg, tx, ty, mode, scale) {
+    // tx,ty: where the object's centre goes. mode: "copy" | "flip"
+    const { x0, y0, w, h } = sg, a = soften(sg.m, w, h);
+    const s = scale || 1;
+    const ox0 = Math.floor(tx - (sg.cx - x0) * s) - 2, oy0 = Math.floor(ty - (sg.cy - y0) * s) - 2;
+    const ow = Math.ceil(w * s) + 4, oh = Math.ceil(h * s) + 4;
+    for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
+      const gx = ox0 + x, gy = oy0 + y; if (gx < 0 || gy < 0 || gx >= W || gy >= H) continue;
+      // map back into the source box
+      let ux = (gx - tx) / s, uy = (gy - ty) / s;
+      if (mode === "flip") ux = -ux;
+      const lx = ux + (sg.cx - x0), ly = uy + (sg.cy - y0);
+      if (lx < 0 || ly < 0 || lx > w - 1.001 || ly > h - 1.001) continue;
+      const ix = lx | 0, iy = ly | 0, fx = lx - ix, fy = ly - iy, i00 = iy * w + ix;
+      const al = (a[i00] * (1 - fx) + a[i00 + 1] * fx) * (1 - fy) + (a[i00 + w] * (1 - fx) + a[i00 + w + 1] * fx) * fy;
+      if (al <= 0) continue;
+      const g00 = (iy + y0) * W + ix + x0, g = gy * W + gx;
+      for (let c = 0; c < 3; c++) {
+        const Gc = O[c];
+        const v = (Gc[g00] * (1 - fx) + Gc[g00 + 1] * fx) * (1 - fy) + (Gc[g00 + W] * (1 - fx) + Gc[g00 + W + 1] * fx) * fy;
+        C[c][g] = C[c][g] * (1 - al) + v * al;
+      }
+    }
+    return { bx0: ox0, by0: oy0, bx1: ox0 + ow, by1: oy0 + oh };
+  }
+
+  /* ---- recolour along the outline ---- */
+  function recolor(sg) {
+    const { x0, y0, w, h } = sg, a = soften(dilate(sg.m, w, h, 1), w, h);
+    let sat = 0, n = 0;
+    for (let i = 0; i < w * h; i++) if (sg.m[i]) { const g = (((i / w) | 0) + y0) * W + (i % w) + x0; const hv = rgb2hsv(oR[g], oG[g], oB[g]); sat += hv[1]; n++; }
+    sat /= n || 1;
+    let hx = 0, hy = 0;
+    for (let i = 0; i < w * h; i += 2) if (sg.m[i]) { const g = (((i / w) | 0) + y0) * W + (i % w) + x0; const hv = rgb2hsv(oR[g], oG[g], oB[g]); hx += Math.cos(hv[0] * Math.PI / 180) * hv[1]; hy += Math.sin(hv[0] * Math.PI / 180) * hv[1]; }
+    const mh = (Math.atan2(hy, hx) * 180 / Math.PI + 360) % 360;
+    if (mh > 8 && mh < 45 && sat > .18 && sat < .6) return false;   // looks like skin: faces turning blue is silly, not tricky
+    const grey = sat < .14;
+    const shift = L.hue[0] + R() * (L.hue[1] - L.hue[0]);
+    const tintH = R() * 360;
+    for (let i = 0; i < w * h; i++) {
+      const al = a[i]; if (!al) continue;
+      const g = (((i / w) | 0) + y0) * W + (i % w) + x0;
+      const hv = rgb2hsv(C[0][g], C[1][g], C[2][g]);
+      let nh, ns, nv = hv[2];
+      if (grey) { nh = tintH; ns = .45 + hv[1]; nv = Math.min(1, nv * 1.02); }
+      else { nh = (hv[0] + shift) % 360; ns = Math.min(1, hv[1] * 1.05); }
+      const rgb = hsv2rgb(nh, ns, nv);
+      for (let c = 0; c < 3; c++) C[c][g] = C[c][g] * (1 - al) + rgb[c] * al;
     }
   }
   function rgb2hsv(r, g, b) {
@@ -594,6 +839,7 @@ function buildPuzzle(img, levelKey, seed) {
     return [h, mx ? d / mx : 0, mx];
   }
   function hsv2rgb(h, s, v) {
+    s = Math.max(0, Math.min(1, s));
     const c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c;
     let r, g, b;
     if (h < 60) [r, g, b] = [c, x, 0]; else if (h < 120) [r, g, b] = [x, c, 0]; else if (h < 180) [r, g, b] = [0, c, x];
@@ -601,140 +847,100 @@ function buildPuzzle(img, levelKey, seed) {
     return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
   }
 
-  const diffs = [];
-  const tmp = [0, 0, 0];
-  const cands = [];
-  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
-    const x = gx * cs + cs / 2, y = gy * cs + cs / 2;
-    if (x < base * 1.25 || y < base * 1.25 || x > W - base * 1.25 || y > H - base * 1.25) continue;
-    const s = score[gy * gw + gx] / (maxScore || 1);
-    if (s > .18) cands.push({ x, y, w: Math.pow(s, 1.6) });
-  }
-  // fallback: whole interior if the photo is very plain
-  if (cands.length < L.count * 4) for (let gy = 0; gy < gh; gy += 2) for (let gx = 0; gx < gw; gx += 2) {
-    const x = gx * cs, y = gy * cs;
-    if (x > base * 1.25 && y > base * 1.25 && x < W - base * 1.25 && y < H - base * 1.25) cands.push({ x, y, w: .05 });
-  }
-  let totalW = cands.reduce((a, c) => a + c.w, 0);
-  function pick() { let r = R() * totalW; for (const c of cands) { r -= c.w; if (r <= 0) return c; } return cands[cands.length - 1]; }
-
-  const TYPES = ["color", "color", "color", "erase", "erase", "swap", "swap", "mirror", "turn", "grow"];
-  const minDist = base * 2.7;
-
-  function tryApply(type, cxp, cyp, rx, ry, thr) {
-    const x0 = Math.max(0, Math.floor(cxp - rx - 2)), x1 = Math.min(W - 1, Math.ceil(cxp + rx + 2));
-    const y0 = Math.max(0, Math.floor(cyp - ry - 2)), y1 = Math.min(H - 1, Math.ceil(cyp + ry + 2));
-    const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
-    const buf = new Float32Array(bw * bh * 3), alpha = new Float32Array(bw * bh);
-    // type parameters
-    let hueShift = 0, sx = 0, sy = 0, ang = 0, grow = 1, flipV = false;
-    if (type === "color") {
-      // skip grey areas: recolouring them shows nothing
-      let sat = 0, c = 0;
-      for (let y = y0; y <= y1; y += 3) for (let x = x0; x <= x1; x += 3) { const p = (y * W + x) * 4; const h = rgb2hsv(S[p], S[p + 1], S[p + 2]); sat += h[1]; c++; }
-      if (sat / c < .2) return null;
-      hueShift = 110 + R() * 140;
-    }
-    let off = [0, 0, 0];
-    if (type === "swap" || type === "erase") {
-      // swap: bring in another busy spot whose surroundings match, so the seam disappears.
-      // erase: bring in a calm spot with matching surroundings, so the object vanishes.
-      const ring = (px, py, d, n, o) => {
-        for (let i = 0; i < n; i++) {
-          const a = i / n * Math.PI * 2;
-          sample(px + Math.cos(a) * rx * d, py + Math.sin(a) * ry * d, tmp);
-          o.push(tmp[0], tmp[1], tmp[2]);
-        }
-        return o;
-      };
-      const tRing = ring(cxp, cyp, .93, 28, []), tCore = ring(cxp, cyp, .35, 12, ring(cxp, cyp, .1, 4, []));
-      let best = null, bestS = Infinity, bestRd = 0;
-      for (let t = 0; t < 70; t++) {
-        const c = type === "swap" && R() < .7 ? pick() : { x: rx * 1.2 + R() * (W - rx * 2.4), y: ry * 1.2 + R() * (H - ry * 2.4) };
-        if (Math.hypot(c.x - cxp, c.y - cyp) < Math.max(rx, ry) * 2.4) continue;
-        if (c.x < rx + 2 || c.y < ry + 2 || c.x > W - rx - 2 || c.y > H - ry - 2) continue;
-        const sR = ring(c.x, c.y, .93, 28, []), sC = ring(c.x, c.y, .35, 12, ring(c.x, c.y, .1, 4, []));
-        // compare rings after removing the average colour difference (we correct for it below)
-        const m = [0, 0, 0];
-        for (let i = 0; i < sR.length; i++) m[i % 3] += (tRing[i] - sR[i]) / (sR.length / 3);
-        let rd = 0; for (let i = 0; i < sR.length; i++) rd += Math.abs(tRing[i] - sR[i] - m[i % 3]);
-        rd = rd / sR.length + (Math.abs(m[0]) + Math.abs(m[1]) + Math.abs(m[2])) / 9;
-        let cd = 0; for (let i = 0; i < sC.length; i++) cd += Math.abs(tCore[i] - sC[i] - m[i % 3]);
-        cd /= sC.length;
-        const g = score[Math.min(gh - 1, (c.y / cs) | 0) * gw + Math.min(gw - 1, (c.x / cs) | 0)] / (maxScore || 1);
-        const sc = type === "swap" ? rd * 1.6 - cd : rd * 1.4 + g * 60;
-        if (type === "swap" && cd < thr) continue;
-        if (sc < bestS) { bestS = sc; best = c; off = m; bestRd = rd; }
-      }
-      if (!best || bestRd > 30) return null;   // the seam would show
-      sx = best.x - cxp; sy = best.y - cyp;
-    }
-    if (type === "turn") ang = (R() < .5 ? 1 : -1) * (Math.PI / 2 + (R() < .3 ? Math.PI / 2 : 0));
-    if (type === "grow") grow = R() < .7 ? 1.45 : 0.68;
-    if (type === "mirror") flipV = R() < .3;
-
-    const inner = type === "erase" ? .5 : .62;
-    let diffSum = 0, diffN = 0;
+  /* ---- how visible is a change? ---- */
+  function measure(x0, y0, x1, y1) {
+    x0 = Math.max(0, x0 | 0); y0 = Math.max(0, y0 | 0); x1 = Math.min(W - 1, x1 | 0); y1 = Math.min(H - 1, y1 | 0);
+    let n = 0, sum = 0, mnx = W, mny = H, mxx = 0, mxy = 0;
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-      const dx = (x - cxp) / rx, dy = (y - cyp) / ry, d = Math.sqrt(dx * dx + dy * dy);
-      if (d >= 1) continue;
-      let a = d < inner ? 1 : 1 - (d - inner) / (1 - inner); a = a * a * (3 - 2 * a);
-      const bi = (y - y0) * bw + (x - x0); alpha[bi] = a;
-      const p = (y * W + x) * 4;
-      let r, g, b;
-      if (type === "color") {
-        const h = rgb2hsv(S[p], S[p + 1], S[p + 2]);
-        const nh = (h[0] + hueShift) % 360, ns = Math.min(1, h[1] * 1.15 + .03);
-        [r, g, b] = h[1] < .08 ? [S[p], S[p + 1], S[p + 2]] : hsv2rgb(nh, ns, h[2]);
-      } else {
-        let qx = x, qy = y;
-        if (type === "swap" || type === "erase") { qx = x + sx; qy = y + sy; }
-        else if (type === "mirror") { if (flipV) qy = 2 * cyp - y; else qx = 2 * cxp - x; }
-        else if (type === "turn") { const ux = x - cxp, uy = y - cyp; qx = cxp + ux * Math.cos(ang) - uy * Math.sin(ang); qy = cyp + ux * Math.sin(ang) + uy * Math.cos(ang); }
-        else if (type === "grow") { qx = cxp + (x - cxp) / grow; qy = cyp + (y - cyp) / grow; }
-        sample(qx, qy, tmp); [r, g, b] = [tmp[0] + off[0], tmp[1] + off[1], tmp[2] + off[2]];
-      }
-      buf[bi * 3] = r; buf[bi * 3 + 1] = g; buf[bi * 3 + 2] = b;
-      if (a > .6) {
-        diffSum += (Math.abs(r - S[p]) + Math.abs(g - S[p + 1]) + Math.abs(b - S[p + 2])) / 3; diffN++;
-      }
+      const g = y * W + x, d = (Math.abs(cR[g] - oR[g]) + Math.abs(cG[g] - oG[g]) + Math.abs(cB[g] - oB[g])) / 3;
+      if (d > 20) { n++; sum += d; if (x < mnx) mnx = x; if (x > mxx) mxx = x; if (y < mny) mny = y; if (y > mxy) mxy = y; }
     }
-    const strength = diffN ? diffSum / diffN : 0;
-    if (strength < thr) return null;
-    return { x0, y0, bw, bh, buf, alpha, strength };
+    return { n, mean: n ? sum / n : 0, bx0: mnx, by0: mny, bx1: mxx, by1: mxy };
   }
 
-  function commit(res) {
-    const { x0, y0, bw, bh, buf, alpha } = res;
-    for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
-      const bi = y * bw + x, a = alpha[bi]; if (!a) continue;
-      const p = ((y + y0) * W + (x + x0)) * 4;
-      for (let c = 0; c < 3; c++) out[p + c] = out[p + c] * (1 - a) + buf[bi * 3 + c] * a;
-    }
-  }
-
+  const diffs = [];
+  const gap = B * .035;
+  const free = (b) => !diffs.some(d => b.bx0 - gap < d.bx1 && b.bx1 + gap > d.bx0 && b.by0 - gap < d.by1 && b.by1 + gap > d.by0);
+  let minPix = Math.PI * rMin * rMin * .45;
+  const t0 = performance.now();
   let thr = L.thr;
-  for (let attempt = 0; attempt < 900 && diffs.length < L.count; attempt++) {
-    if (attempt === 450) thr *= .7;            // plain photos: accept softer changes
-    const c = pick();
-    const jx = c.x + (R() - .5) * cs, jy = c.y + (R() - .5) * cs;
-    if (diffs.some(d => Math.hypot(d.x - jx, d.y - jy) < minDist)) continue;
-    const size = base * (0.8 + R() * 0.45);
-    const asp = 0.8 + R() * 0.45;
-    const rx = size * Math.sqrt(asp), ry = size / Math.sqrt(asp);
-    if (jx - rx < 4 || jy - ry < 4 || jx + rx > W - 4 || jy + ry > H - 4) continue;
-    // vary types: avoid repeating the previous one
-    const order = TYPES.slice().sort(() => R() - .5);
-    const last = diffs.length ? diffs[diffs.length - 1].type : null;
-    order.sort((a, b) => (a === last) - (b === last));
-    for (const t of order) {
-      const res = tryApply(t, jx, jy, rx, ry, thr);
-      if (res) { commit(res); diffs.push({ x: jx, y: jy, rx, ry, type: t, found: false }); break; }
+  const typeBag = () => { const r = R(); let acc = 0; for (const [t, w] of L.mix) { acc += w; if (r < acc) return t; } return L.mix[0][0]; };
+
+  // if a photo does not have enough suitable objects, loosen the rules step by step
+  let phase = 0, relax = 1;
+  const minPix0 = minPix;
+  for (let attempt = 0; attempt < 1500 && diffs.length < L.count; attempt++) {
+    const el = performance.now() - t0;
+    if (el > 9000) break;
+    const want = attempt > 1000 || el > 6500 ? 2 : attempt > 500 || el > 3500 ? 1 : 0;
+    if (want > phase) {
+      phase = want;
+      relax = phase === 1 ? .75 : .5;
+      rMin = B * L.rMin * (phase === 1 ? .7 : .5); rMax = B * L.rMax * (phase === 1 ? 1.5 : 2.2);
+      thr = L.thr * (phase === 1 ? .85 : .7);
+      minPix = minPix0 * (phase === 1 ? .5 : .3);
     }
+    const c = pick();
+    const sg = segment(c.x, c.y);
+    if (!sg || !free(sg)) continue;
+    let type = typeBag();
+    const last = diffs.length ? diffs[diffs.length - 1].type : null;
+    if (type === last && R() < .6) type = typeBag();
+    // whole, clearly outlined objects only; moving or copying needs an even cleaner outline
+    const need = type === "recolor" ? [14, .55] : type === "remove" ? [18, .68] : [24, .72];
+    if (sg.contrast < need[0] * relax || sg.closed < need[1] * relax) continue;
+    const pad = Math.max(sg.bx1 - sg.bx0, sg.by1 - sg.by0) * .9 + 8;
+    let region, undo;
+    if (type === "recolor") {
+      undo = backup(sg.bx0 - 4, sg.by0 - 4, sg.bx1 + 4, sg.by1 + 4);
+      if (recolor(sg) === false) { undo(); continue; }
+      region = sg;
+    } else if (type === "remove") {
+      undo = backup(sg.x0, sg.y0, sg.x0 + sg.w, sg.y0 + sg.h);
+      if (!removeSeg(sg)) { undo(); continue; }
+      region = sg;
+    } else if (type === "flip" || type === "shrink") {
+      undo = backup(sg.x0, sg.y0, sg.x0 + sg.w, sg.y0 + sg.h);
+      if (!removeSeg(sg)) { undo(); continue; }
+      if (type === "flip") pasteSeg(sg, sg.cx, sg.cy, "flip", 1);
+      else { const s = .62; pasteSeg(sg, sg.cx, sg.cy + (sg.by1 - sg.cy) * (1 - s), "copy", s); }
+      region = sg;
+    } else if (type === "add") {
+      // put a copy of this object somewhere calm whose colours match the object's surroundings
+      const bw = sg.bx1 - sg.bx0 + 1, bh = sg.by1 - sg.by0 + 1;
+      let best = null, bestS = Infinity;
+      const ringPts = [];
+      for (let t = 0; t < 24; t++) { const an = t / 24 * Math.PI * 2; ringPts.push([Math.cos(an) * (bw / 2 + 5), Math.sin(an) * (bh / 2 + 5)]); }
+      const ctrX = (sg.bx0 + sg.bx1) / 2, ctrY = (sg.by0 + sg.by1) / 2;
+      for (let t = 0; t < 70; t++) {
+        const px = bw + R() * (W - bw * 2), py = bh + R() * (H - bh * 2);
+        const box = { bx0: px - bw / 2, by0: py - bh / 2, bx1: px + bw / 2, by1: py + bh / 2 };
+        if (!free(box)) continue;
+        if (Math.abs(px - ctrX) < bw * 1.4 && Math.abs(py - ctrY) < bh * 1.4) continue;
+        let s = 0, ge = 0;
+        for (const [ux, uy] of ringPts) {
+          const gs = Math.round(ctrY + uy) * W + Math.round(ctrX + ux), gt = Math.round(py + uy) * W + Math.round(px + ux);
+          if (gs < 0 || gs >= N || gt < 0 || gt >= N) { s += 999; continue; }
+          s += Math.abs(oR[gs] - cR[gt]) + Math.abs(oG[gs] - cG[gt]) + Math.abs(oB[gs] - cB[gt]);
+        }
+        for (let yy = -2; yy <= 2; yy++) for (let xx = -2; xx <= 2; xx++) ge += grad[Math.round(py + yy * bh / 5) * W + Math.round(px + xx * bw / 5)] || 0;
+        const sc = s / 72 + ge / 25 * .6;
+        if (sc < bestS) { bestS = sc; best = { px, py }; }
+      }
+      if (!best || bestS > 40) continue;
+      const tx = best.px + (sg.cx - ctrX), ty = best.py + (sg.cy - ctrY);
+      undo = backup(tx - pad - bw, ty - pad - bh, tx + pad + bw, ty + pad + bh);
+      region = pasteSeg(sg, tx, ty, "copy", 1);
+    }
+    const m = measure(region.bx0 - 4, region.by0 - 4, region.bx1 + 4, region.by1 + 4);
+    if (m.n < minPix || m.mean < thr || !free(m)) { undo(); continue; }
+    const rx = Math.max((m.bx1 - m.bx0) / 2 + 3, rMin), ry = Math.max((m.by1 - m.by0) / 2 + 3, rMin);
+    diffs.push({ x: (m.bx0 + m.bx1) / 2, y: (m.by0 + m.by1) / 2, rx, ry, bx0: m.bx0, by0: m.by0, bx1: m.bx1, by1: m.by1, type, found: false });
   }
 
-  const outData = new ImageData(out, W, H);
-  return { W, H, original: src, changed: outData, diffs };
+  const out = new Uint8ClampedArray(N * 4);
+  for (let i = 0, p = 0; i < N; i++, p += 4) { out[p] = cR[i]; out[p + 1] = cG[i]; out[p + 2] = cB[i]; out[p + 3] = 255; }
+  return { W, H, original: src, changed: new ImageData(out, W, H), diffs };
 }
 
 /* ================= App state ================= */
