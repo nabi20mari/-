@@ -46,13 +46,7 @@ button:focus-visible, label:focus-visible, .card:focus-visible { outline: 4px so
 .screen[hidden] { display: none !important; }
 
 /* ---------- Home ---------- */
-#home { overflow-y: auto; -webkit-overflow-scrolling: touch;
-  background:
-    radial-gradient(circle at 12% 8%, #fff 0 60px, transparent 61px),
-    radial-gradient(circle at 18% 6%, #fff 0 44px, transparent 45px),
-    radial-gradient(circle at 88% 14%, #fff 0 52px, transparent 53px),
-    var(--sky);
-}
+#home { overflow-y: auto; -webkit-overflow-scrolling: touch; background: linear-gradient(180deg, #CBE9FF 0, var(--sky) 320px); }
 .home-in {
   width: 100%; max-width: 1180px; margin: 0 auto;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
@@ -340,7 +334,143 @@ button.pill:active { background: rgba(255,255,255,.24); }
 <script>
 "use strict";
 /* ================= Data ================= */
-const PHOTOS = window.PHOTOS_DATA || [];
+const PHOTOS = [
+ {
+  "id": "toys",
+  "name": "장난감 가게",
+  "src": "photos/toys.jpg",
+  "thumb": "photos/toys_t.jpg",
+  "credit": "Grandmaster Huon",
+  "license": "CC0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AToy_store_in_stockholm_10.jpg"
+ },
+ {
+  "id": "candyshop",
+  "name": "사탕 가게",
+  "src": "photos/candyshop.jpg",
+  "thumb": "photos/candyshop_t.jpg",
+  "credit": "Jim Larrison from Glen Ellyn, IL, USA",
+  "license": "CC BY 2.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AColorful_and_Inviting_Candy_Store_%2814867133277%29.jpg"
+ },
+ {
+  "id": "fruit",
+  "name": "과일 가게",
+  "src": "photos/fruit.jpg",
+  "thumb": "photos/fruit_t.jpg",
+  "credit": "en:User:Daderot",
+  "license": "CC BY-SA 3.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AFruit_Stall_in_Barcelona_Market.jpg"
+ },
+ {
+  "id": "lego",
+  "name": "레고 블록",
+  "src": "photos/lego.jpg",
+  "thumb": "photos/lego_t.jpg",
+  "credit": "Alan Chia",
+  "license": "CC BY-SA 2.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ALego_Color_Bricks.jpg"
+ },
+ {
+  "id": "ducks",
+  "name": "고무 오리",
+  "src": "photos/ducks.jpg",
+  "thumb": "photos/ducks_t.jpg",
+  "credit": "gaetanlee",
+  "license": "CC BY 2.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ARubber_duckies_So_many_ducks.jpg"
+ },
+ {
+  "id": "village",
+  "name": "알록달록 마을",
+  "src": "photos/village.jpg",
+  "thumb": "photos/village_t.jpg",
+  "credit": "amanderson2",
+  "license": "CC BY 2.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ACloseup_colorful_houses_Nuuk_Greenland.jpg"
+ },
+ {
+  "id": "nemo",
+  "name": "흰동가리",
+  "src": "photos/nemo.jpg",
+  "thumb": "photos/nemo_t.jpg",
+  "credit": "Ritiks",
+  "license": "CC BY-SA 3.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AClown_fish_in_the_Andaman_Coral_Reef.jpg"
+ },
+ {
+  "id": "flowers",
+  "name": "꽃 시장",
+  "src": "photos/flowers.jpg",
+  "thumb": "photos/flowers_t.jpg",
+  "credit": "Zarate123",
+  "license": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ADangwa_Flower_Market_Manila_01.jpg"
+ },
+ {
+  "id": "cupcakes",
+  "name": "컵케이크",
+  "src": "photos/cupcakes.jpg",
+  "thumb": "photos/cupcakes_t.jpg",
+  "credit": "Alicia Fagerving",
+  "license": "CC BY-SA 3.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ACupcakes_market_stall_01.jpg"
+ },
+ {
+  "id": "gnomes",
+  "name": "정원 난쟁이",
+  "src": "photos/gnomes.jpg",
+  "thumb": "photos/gnomes_t.jpg",
+  "credit": "Trogain",
+  "license": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AGarden_gnomes_-_Uraj%C3%A4rvi_Manor_Museum.jpg"
+ },
+ {
+  "id": "beach",
+  "name": "해변 오두막",
+  "src": "photos/beach.jpg",
+  "thumb": "photos/beach_t.jpg",
+  "credit": "Gzzz",
+  "license": "CC BY-SA 3.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ACabines_de_bain_Berck.jpg"
+ },
+ {
+  "id": "lollipop",
+  "name": "막대사탕",
+  "src": "photos/lollipop.jpg",
+  "thumb": "photos/lollipop_t.jpg",
+  "credit": "Islandsislands",
+  "license": "CC0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ABarrels_of_Candy_in_a_Candy_Shop_in_Savannah%2C_GA.jpg"
+ },
+ {
+  "id": "sea",
+  "name": "바닷속 물고기",
+  "src": "photos/sea.jpg",
+  "thumb": "photos/sea_t.jpg",
+  "credit": "keiyac",
+  "license": "CC BY-SA 2.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3ACoral_reef_life_near_Akajima_11.jpg"
+ },
+ {
+  "id": "market",
+  "name": "수박과 과일",
+  "src": "photos/market.jpg",
+  "thumb": "photos/market_t.jpg",
+  "credit": "Acabashi",
+  "license": "CC BY-SA 4.0",
+  "page": "https://commons.wikimedia.org/wiki/File%3AOutdoor_market_fruit_stall_Market_Place_Romford_London_01.jpg"
+ },
+ {
+  "id": "balloons",
+  "name": "열기구",
+  "src": "photos/balloons.jpg",
+  "thumb": "photos/balloons_t.jpg",
+  "credit": "user:AngMoKio",
+  "license": "CC BY-SA 2.5",
+  "page": "https://commons.wikimedia.org/wiki/File%3AHotair_balloons_amk.jpg"
+ }
+];
 const LEVELS = {
   easy:   { count: 5,  radius: 0.085, thr: 42, hints: 3 },
   normal: { count: 7,  radius: 0.068, thr: 34, hints: 3 },
